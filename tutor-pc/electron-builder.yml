@@ -1,0 +1,27 @@
+appId: com.evolution.tutor-pc
+productName: Tutor PC
+copyright: Copyright © 2025 Evolution
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+asar: true
+compression: maximum

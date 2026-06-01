@@ -1,0 +1,42 @@
+{
+  "name": "tutor-pc",
+  "productName": "PROFESSOR",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop tutor for active language practice from PC audio.",
+  "main": "dist-electron/main.mjs",
+  "scripts": {
+    "dev": "vite build --config vite.electron.main.config.ts && vite build --config vite.electron.config.ts && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/launch-electron.js\"",
+    "build": "vite build --config vite.electron.main.config.ts && vite build --config vite.electron.config.ts && vite build",
+    "test": "vitest run --reporter=verbose",
+    "test:watch": "vitest --reporter=verbose",
+    "preview": "vite preview",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "lucide-react": "^1.16.0",
+    "node-edge-tts": "^1.2.10",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "@vitest/coverage-v8": "^4.1.7",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7",
+    "wait-on": "^9.0.10"
+  }
+}
