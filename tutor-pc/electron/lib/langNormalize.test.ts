@@ -1,5 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeLang } from './langNormalize'
+import { normalizeLang, canonicalLang } from './langNormalize'
+
+describe('canonicalLang', () => {
+  it('maps full names to base ISO', () => {
+    expect(canonicalLang('korean')).toBe('ko')
+    expect(canonicalLang('portuguese')).toBe('pt')
+    expect(canonicalLang('chinese')).toBe('zh')
+  })
+  it('drops region tags', () => {
+    expect(canonicalLang('ko-KR')).toBe('ko')
+    expect(canonicalLang('zh-CN')).toBe('zh')
+    expect(canonicalLang('en-US')).toBe('en')
+  })
+  it('merges name and ISO to the same key', () => {
+    expect(canonicalLang('korean')).toBe(canonicalLang('ko'))
+    expect(canonicalLang('KOREAN')).toBe(canonicalLang('ko-KR'))
+  })
+  it('handles empty/undefined', () => {
+    expect(canonicalLang('')).toBe('')
+    expect(canonicalLang(undefined)).toBe('')
+  })
+})
 
 describe('normalizeLang', () => {
   it('maps full Whisper names to ISO codes', () => {

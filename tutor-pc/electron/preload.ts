@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('api', {
     close: () => ipcRenderer.send('window:close'),
     hide: () => ipcRenderer.send('window:hide'),
     show: (name: string) => ipcRenderer.send('window:show', name),
+    openReview: (lang?: string) => ipcRenderer.send('review:open', lang),
+    pendingReviewLang: () => ipcRenderer.invoke('review:pending-lang'),
   },
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
@@ -25,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   tutor: {
     analyze: (transcript: string, language: string, audioUrl?: string, cues?: unknown) => ipcRenderer.invoke('tutor:analyze', transcript, language, audioUrl, cues),
     lookup: (word: string, context: string, language: string) => ipcRenderer.invoke('tutor:lookup', word, context, language),
+    variations: (sentence: string, language: string) => ipcRenderer.invoke('tutor:variations', sentence, language),
   },
   tts: {
     speak: (text: string, lang: string) => ipcRenderer.invoke('tts:speak', text, lang),
@@ -43,11 +46,12 @@ contextBridge.exposeInMainWorld('api', {
     addAttempt: (attempt: unknown) => ipcRenderer.send('session:attempt', attempt),
   },
   store: {
-    stats:          () => ipcRenderer.invoke('store:stats'),
+    stats:          (lang?: string) => ipcRenderer.invoke('store:stats', lang),
+    languages:      () => ipcRenderer.invoke('store:languages'),
     recordSession:  (lineCount: number) => ipcRenderer.invoke('store:record-session', lineCount),
     addVocab:       (items: unknown) => ipcRenderer.invoke('store:add-vocab', items),
     recordMistakes: (words: unknown) => ipcRenderer.invoke('store:record-mistakes', words),
-    dueVocab:       () => ipcRenderer.invoke('store:due-vocab'),
+    dueVocab:       (lang?: string) => ipcRenderer.invoke('store:due-vocab', lang),
     gradeVocab:     (id: string, next: unknown) => ipcRenderer.invoke('store:grade-vocab', id, next),
   },
   on: (channel: string, callback: (...args: unknown[]) => void) => {

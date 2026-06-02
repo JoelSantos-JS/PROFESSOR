@@ -35,3 +35,11 @@ export function normalizeLang(lang?: string): string {
   const key = lang.trim().toLowerCase()
   return NAME_TO_ISO[key] ?? lang.trim()
 }
+
+/**
+ * Canonical base language for grouping/dedup: maps names→ISO and drops the
+ * region tag ("korean" → "ko", "ko-KR" → "ko", "zh-CN" → "zh"). Empty stays "".
+ */
+export function canonicalLang(lang?: string): string {
+  return normalizeLang(lang).split('-')[0].toLowerCase()
+}

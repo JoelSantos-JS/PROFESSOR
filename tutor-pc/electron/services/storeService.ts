@@ -2,6 +2,8 @@ import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { advanceStreak } from '../lib/streak.js'
+import { languageStats, type LangStat } from '../lib/languageStats.js'
+import { canonicalLang } from '../lib/langNormalize.js'
 
 // ── Persisted shapes ──────────────────────────────────────────────────────────
 
@@ -53,7 +55,12 @@ export class StoreService {
 
   private load(): StoreData {
     try {
-      return { ...EMPTY, ...JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) }
+      const data: StoreData = { ...EMPTY, ...JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) }
+      // Migrate legacy/inconsistent language codes so decks don't split
+      // (e.g. "korean"→"ko", "ko-KR"→"ko", "portuguese"→"pt").
+      for (const v of data.vocab) v.lang = canonicalLang(v.lang)
+      for (const m of Object.values(data.mistakes)) m.lang = canonicalLang(m.lang)
+      return data
     } catch {
       return { ...EMPTY }
     }
@@ -90,20 +97,28 @@ export class StoreService {
     const now = Date.now()
     for (const it of items) {
       if (!it.word?.trim()) continue
+      const lang = canonicalLang(it.lang)
       // de-dupe by lang+word
-      if (data.vocab.some(v => v.lang === it.lang && v.word === it.word)) continue
+      if (data.vocab.some(v => v.lang === lang && v.word === it.word)) continue
       data.vocab.push({
         id: `v_${now}_${Math.random().toString(36).slice(2, 8)}`,
         word: it.word, romanization: it.romanization, translation: it.translation,
-        example: it.example, lang: it.lang,
+        example: it.example, lang,
         ease: 2.5, interval: 0, reps: 0, due: now, createdAt: now, lapses: 0,
       })
     }
     this.save(data)
   }
 
-  getDueVocab(now = Date.now(), limit = 50): VocabCard[] {
-    return this.load().vocab.filter(v => v.due <= now).slice(0, limit)
+  getDueVocab(now = Date.now(), limit = 50, lang?: string): VocabCard[] {
+    return this.load().vocab
+      .filter(v => v.due <= now && (!lang || v.lang === lang))
+      .slice(0, limit)
+  }
+
+  /** Per-language deck stats (for the language separator UI). */
+  getLanguages(now = Date.now()): LangStat[] {
+    return languageStats(this.load().vocab, now)
   }
 
   gradeVocab(id: string, next: { ease: number; interval: number; reps: number; due: number; lapsed: boolean }): void {
@@ -133,16 +148,19 @@ export class StoreService {
   }
 
   // ── Aggregates for the dashboard ───────────────────────────────────────────────
-  getStats() {
+  getStats(lang?: string) {
     const data = this.load()
     const now = Date.now()
+    const vocab    = lang ? data.vocab.filter(v => v.lang === lang) : data.vocab
+    const mistakes = Object.values(data.mistakes).filter(m => !lang || m.lang === lang)
     return {
       sessionCount: data.sessions.length,
-      phraseCount: data.vocab.length,
-      dueCount: data.vocab.filter(v => v.due <= now).length,
+      phraseCount: vocab.length,
+      dueCount: vocab.filter(v => v.due <= now).length,
       streak: data.streak,
+      languages: languageStats(data.vocab, now),
       recentSessions: data.sessions.slice(-5).reverse(),
-      topMistakes: Object.values(data.mistakes).sort((a, b) => b.count - a.count).slice(0, 10),
+      topMistakes: mistakes.sort((a, b) => b.count - a.count).slice(0, 10),
     }
   }
 }

@@ -11,7 +11,7 @@ export function detectPitch(
   sampleRate: number,
   minHz = 70,
   maxHz = 400,
-  rmsGate = 0.01,
+  rmsGate = 0.006,
 ): number {
   const n = buf.length
   if (n === 0 || sampleRate <= 0) return 0

@@ -51,6 +51,7 @@ export default function PronunciationCompare({ attempt }: { attempt: SessionAtte
         contourOf(attempt.originalAudioUrl),
         contourOf(ttsUrl),
       ])
+      // Include any source that decoded with at least one voiced frame.
       const s: Series[] = []
       if (mine.some(v => v > 0)) s.push({ label: 'Você',     color: '#3B82F6', contour: mine })
       if (orig.some(v => v > 0)) s.push({ label: 'Original', color: '#10B981', contour: orig })
@@ -82,28 +83,35 @@ export default function PronunciationCompare({ attempt }: { attempt: SessionAtte
         <div className="mt-2 rounded-lg border border-white/[0.06] bg-surface-2/40 p-2.5">
           {loading ? (
             <p className="flex items-center gap-1.5 text-xs text-muted/70"><Loader2 size={12} className="animate-spin" /> Analisando entonação...</p>
-          ) : series && series.length > 0 ? (
+          ) : (
             <>
-              {/* Pitch contour overlay (shapes normalized per voice) */}
-              <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-16 mb-1.5">
-                <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="#ffffff10" strokeWidth="1" />
-                {series.map((s, i) => (
-                  <path key={i} d={contourPath(s.contour, W, H)} fill="none" stroke={s.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-                ))}
-              </svg>
+              {/* Pitch contour overlay — only when we have data */}
+              {series && series.length > 0 ? (
+                <>
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-16 mb-1.5">
+                    <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="#ffffff10" strokeWidth="1" />
+                    {series.map((s, i) => (
+                      <path key={i} d={contourPath(s.contour, W, H)} fill="none" stroke={s.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+                    ))}
+                  </svg>
+                  <p className="text-[10px] text-muted/50 mb-1.5 leading-snug">
+                    A linha mostra a <b>entonação</b> (subidas/descidas do tom). Compare o formato da sua linha (azul) com a Original (verde).
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 mb-1.5">
+                  <p className="text-[11px] text-muted/60">Gráfico indisponível para este áudio — mas você pode comparar de ouvido:</p>
+                  <button onClick={analyze} className="text-[11px] text-primary/80 hover:text-primary shrink-0">Tentar de novo</button>
+                </div>
+              )}
 
-              {/* Legend + play buttons */}
+              {/* Play buttons — always available so you can compare by ear */}
               <div className="flex flex-wrap items-center gap-2">
                 {attempt.audioUrl && <PlayChip label="Você"     color="#3B82F6" onClick={() => playClip(attempt.audioUrl)} />}
                 {attempt.originalAudioUrl && <PlayChip label="Original" color="#10B981" onClick={() => playClip(attempt.originalAudioUrl)} />}
                 <PlayChip label="TTS" color="#F59E0B" onClick={() => speakTts(attempt.original, attempt.lang)} />
               </div>
-              <p className="text-[10px] text-muted/50 mt-1.5 leading-snug">
-                A linha mostra a <b>entonação</b> (subidas/descidas do tom). Compare o formato da sua linha (azul) com a Original (verde) para ajustar o ritmo e a melodia da frase.
-              </p>
             </>
-          ) : (
-            <p className="text-xs text-muted/60">Não foi possível analisar o áudio.</p>
           )}
         </div>
       )}

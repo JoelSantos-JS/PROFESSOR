@@ -78,6 +78,23 @@ export function scoreFromDiff(diff: DiffToken[]): number {
   return Math.round((ok / originalCount) * 100)
 }
 
+/**
+ * Words from the original the learner did NOT say correctly (status 'missing'),
+ * de-duplicated, preserving order. These are the words to drill.
+ */
+export function missingWords(diff: DiffToken[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const d of diff) {
+    if (d.status !== 'missing') continue
+    const key = normalizeWord(d.word)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(d.word)
+  }
+  return out
+}
+
 export interface TextSegment {
   text: string
   isWord: boolean  // true = clickable word/character; false = space/punctuation

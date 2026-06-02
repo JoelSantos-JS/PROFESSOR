@@ -4,20 +4,33 @@
 // of phrases it commonly invents over non-speech audio.
 
 export interface WhisperSegment {
-  no_speech_prob?: number  // 0..1, higher = more likely NOT speech
-  avg_logprob?: number     // log-probability, lower = less confident
+  no_speech_prob?: number     // 0..1, higher = more likely NOT speech
+  avg_logprob?: number        // log-probability, lower = less confident
+  compression_ratio?: number  // higher = repetitive/hallucinated text
 }
 
-export const NO_SPEECH_THRESHOLD = 0.6     // Whisper's own default cutoff
-export const LOW_CONFIDENCE_LOGPROB = -1.0 // Whisper's "failed segment" cutoff
+export const NO_SPEECH_THRESHOLD = 0.55      // strong "not speech" signal alone
+export const LOW_CONFIDENCE_LOGPROB = -0.9   // very low confidence alone
+export const HIGH_COMPRESSION = 2.4          // Whisper's repetition/hallucination cutoff
+// Borderline on BOTH signals together → treat as non-speech (catches background
+// audio that Whisper forces into garbled words, e.g. "Thank you deix toughest").
+export const BORDERLINE_NO_SPEECH = 0.4
+export const BORDERLINE_LOGPROB = -0.55
 
-/** True when the segments look like music / ambient / silence rather than speech. */
+/** True when the segments look like music / ambient / forced-garbage rather than speech. */
 export function isNonSpeech(segments: WhisperSegment[]): boolean {
   if (!segments || segments.length === 0) return false
   const n = segments.length
-  const avgNoSpeech = segments.reduce((s, x) => s + (x.no_speech_prob ?? 0), 0) / n
-  const avgLogprob  = segments.reduce((s, x) => s + (x.avg_logprob ?? 0), 0) / n
-  return avgNoSpeech >= NO_SPEECH_THRESHOLD || avgLogprob <= LOW_CONFIDENCE_LOGPROB
+  const avgNoSpeech    = segments.reduce((s, x) => s + (x.no_speech_prob ?? 0), 0) / n
+  const avgLogprob     = segments.reduce((s, x) => s + (x.avg_logprob ?? 0), 0) / n
+  const avgCompression = segments.reduce((s, x) => s + (x.compression_ratio ?? 0), 0) / n
+
+  if (avgNoSpeech >= NO_SPEECH_THRESHOLD) return true
+  if (avgLogprob <= LOW_CONFIDENCE_LOGPROB) return true
+  if (avgCompression >= HIGH_COMPRESSION) return true
+  // Neither signal alone is damning, but both together → not real dialogue.
+  if (avgNoSpeech >= BORDERLINE_NO_SPEECH && avgLogprob <= BORDERLINE_LOGPROB) return true
+  return false
 }
 
 // Phrases Whisper invents over non-speech audio that are never real dialogue.
@@ -29,17 +42,51 @@ const HALLUCINATIONS = new Set([
   'transcription by', 'transcribed by', 'amara.org',
 ])
 
-/** Normalize for blocklist comparison: lowercase, trim, strip trailing punctuation/music marks. */
+// Sound-event words Whisper emits for non-speech audio. As a STANDALONE
+// transcription (e.g. "Music", "[Applause]", "soft music") these are noise, not
+// dialogue. Inside a real sentence ("I love music") they are kept.
+const SOUND_WORDS = new Set([
+  'music', 'música', 'musique', 'instrumental', 'song', 'singing', 'humming', 'whistling',
+  'applause', 'clapping', 'cheering', 'laughter', 'laughs', 'laughing', 'chuckles', 'chuckling',
+  'sighs', 'sigh', 'coughs', 'coughing', 'gasps', 'groans', 'grunts', 'sniffs',
+  'screaming', 'screams', 'shouting', 'crying', 'sobbing', 'breathing', 'panting',
+  'footsteps', 'thunder', 'wind', 'rain', 'static', 'noise', 'beep', 'beeping', 'ringing',
+  'silence', 'inaudible', 'indistinct', 'unintelligible',
+])
+
+// Adjectives Whisper pairs with sound words ("upbeat music", "dramatic music").
+const SOUND_MODIFIERS = new Set([
+  'soft', 'upbeat', 'dramatic', 'gentle', 'loud', 'quiet', 'tense', 'sad', 'happy',
+  'slow', 'fast', 'background', 'soft', 'eerie', 'ominous', 'cheerful', 'somber', 'light',
+])
+
+/** Normalize for comparison: lowercase, trim, strip wrapping brackets/parens/notes + punctuation. */
 function normalizePhrase(text: string): string {
-  return text.trim().toLowerCase().replace(/[\s.!?♪♫\-]+$/g, '').replace(/^[♪♫\s]+/g, '')
+  return text.trim().toLowerCase()
+    .replace(/^[[(♪♫\s]+/g, '')
+    .replace(/[\])♪♫\s.!?\-]+$/g, '')
 }
 
-/** True when the text is a known Whisper hallucination phrase or pure music marks. */
+/** True when the text is a known Whisper hallucination or a non-speech sound event. */
 export function isHallucinationPhrase(text: string): boolean {
-  const t = normalizePhrase(text)
-  if (!t) return true                          // empty / only punctuation/music
-  if (/^[♪♫]+$/.test(text.trim())) return true // pure music notes
-  return HALLUCINATIONS.has(t)
+  const raw = text.trim()
+  if (!raw) return true                          // empty
+  if (/^[♪♫]+$/.test(raw)) return true           // pure music notes
+  // A transcription fully wrapped in [..], (..) or ♪..♪ is a sound annotation,
+  // not dialogue (e.g. "[Music]", "(door creaks)", "♪ upbeat music ♪").
+  if (/^[[(♪].*[\])♪]$/.test(raw)) return true
+
+  const t = normalizePhrase(raw)
+  if (!t) return true
+  if (HALLUCINATIONS.has(t)) return true
+
+  const words = t.split(/\s+/)
+  const last = words[words.length - 1]
+  // Standalone sound word ("Music"), or "<modifier> <sound>" ("upbeat music").
+  if (words.length === 1 && SOUND_WORDS.has(last)) return true
+  if (words.length === 2 && SOUND_WORDS.has(last) && SOUND_MODIFIERS.has(words[0])) return true
+
+  return false
 }
 
 /** Overall decision: should this Whisper result be discarded as non-speech? */

@@ -212,7 +212,33 @@ describe('segmentText', () => {
 
 // ── diffWords (LCS alignment) ─────────────────────────────────────────────────
 
-import { diffWords, scoreFromDiff } from './text'
+import { diffWords, scoreFromDiff, missingWords } from './text'
+
+describe('missingWords', () => {
+  it('returns only the words the learner missed', () => {
+    const diff = diffWords('the quick brown fox', 'the brown fox')
+    expect(missingWords(diff)).toEqual(['quick'])
+  })
+
+  it('ignores extra (added) and correct words', () => {
+    const diff = diffWords('hello world', 'hello there world now')
+    expect(missingWords(diff)).toEqual([]) // nothing missing, only extras
+  })
+
+  it('de-duplicates repeated missed words', () => {
+    const diff = diffWords('go go go home', 'home')
+    expect(missingWords(diff)).toEqual(['go'])
+  })
+
+  it('returns [] when everything matched', () => {
+    expect(missingWords(diffWords('all good here', 'all good here'))).toEqual([])
+  })
+
+  it('lists multiple distinct missed words in order', () => {
+    const diff = diffWords('I really must go now', 'I go')
+    expect(missingWords(diff)).toEqual(['really', 'must', 'now'])
+  })
+})
 
 describe('diffWords', () => {
   it('all ok on exact match', () => {

@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Volume2, Check, X, Brain } from 'lucide-react'
+import { Volume2, Check, X, Brain, Shuffle, Loader2 } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { storeAPI, ttsAPI } from '../services/electron'
+import { storeAPI, ttsAPI, tutorAPI, windowAPI, onChannel } from '../services/electron'
 import { reviewCard, nextDue, type Grade } from '../lib/srs'
 import { playClip } from '../lib/playClip'
-import type { VocabCard } from '../types'
+import { languageLabel } from '../lib/languages'
+import type { VocabCard, SentenceVariation, LangStat } from '../types'
 
 async function speak(text: string, lang: string) {
   try {
@@ -20,11 +21,47 @@ export default function Review() {
   const [done, setDone]     = useState(0)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    storeAPI.dueVocab().then(cards => { setQueue(cards); setLoading(false) }).catch(() => setLoading(false))
+  // On-demand sentence variations (paraphrases)
+  const [variations, setVariations] = useState<SentenceVariation[] | null>(null)
+  const [varLoading, setVarLoading] = useState(false)
+
+  // Language separation: each studied language is its own deck
+  const [languages, setLanguages] = useState<LangStat[]>([])
+  const [selectedLang, setSelectedLang] = useState<string | null>(null)
+
+  const loadDeck = useCallback((lang: string) => {
+    setSelectedLang(lang)
+    setLoading(true)
+    setQueue([]); setIdx(0); setDone(0); setReveal(false); setVariations(null)
+    storeAPI.dueVocab(lang)
+      .then(cards => { setQueue(cards); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    Promise.all([storeAPI.languages(), windowAPI.pendingReviewLang()]).then(([langs, pending]) => {
+      setLanguages(langs)
+      // Open the deck the Dashboard asked for, else the most-due one.
+      const target = pending && langs.some(l => l.lang === pending) ? pending : langs[0]?.lang
+      if (target) loadDeck(target)
+      else setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [loadDeck])
+
+  // Switch deck live if the Dashboard requests another language while we're open.
+  useEffect(() => onChannel('review:language', (lang) => {
+    if (typeof lang === 'string' && lang) loadDeck(lang)
+  }), [loadDeck])
+
   const card = queue[idx]
+
+  const loadVariations = useCallback(async () => {
+    if (!card) return
+    setVarLoading(true)
+    const res = await tutorAPI.variations(card.word, card.lang).catch(() => null)
+    setVariations(res?.ok ? (res.variations ?? []) : [])
+    setVarLoading(false)
+  }, [card])
 
   const grade = useCallback(async (quality: Grade) => {
     if (!card) return
@@ -38,12 +75,36 @@ export default function Review() {
     }).catch(console.error)
     setDone(d => d + 1)
     setReveal(false)
+    setVariations(null)
     setIdx(i => i + 1)
   }, [card])
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <TitleBar title="Revisão" />
+
+      {/* Language separator — one deck per studied language */}
+      {languages.length > 1 && (
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/60 overflow-x-auto">
+          {languages.map(l => (
+            <button
+              key={l.lang}
+              onClick={() => loadDeck(l.lang)}
+              className={[
+                'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full whitespace-nowrap transition-colors',
+                l.lang === selectedLang
+                  ? 'bg-primary/20 text-primary border border-primary/40'
+                  : 'text-muted hover:text-foreground hover:bg-surface-2 border border-transparent',
+              ].join(' ')}
+            >
+              {languageLabel(l.lang)}
+              {l.due > 0 && (
+                <span className={l.lang === selectedLang ? 'text-primary' : 'text-warning'}>{l.due}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         {loading ? (
@@ -56,8 +117,8 @@ export default function Review() {
             </h2>
             <p className="text-sm text-muted">
               {done > 0
-                ? `Você revisou ${done} ${done === 1 ? 'palavra' : 'palavras'}.`
-                : 'Capture vocabulário no Tutor Board e volte mais tarde.'}
+                ? `Você revisou ${done} ${done === 1 ? 'frase' : 'frases'}.`
+                : 'Capture frases no Tutor Board e volte mais tarde.'}
             </p>
           </div>
         ) : (
@@ -69,12 +130,12 @@ export default function Review() {
             </div>
 
             {/* Card */}
-            <div className="bg-surface border border-border rounded-2xl p-8 min-h-52 flex flex-col items-center justify-center text-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-3xl font-semibold">{card.word}</span>
+            <div className="bg-surface border border-border rounded-2xl p-6 min-h-52 flex flex-col items-center justify-center text-center gap-3">
+              <div className="flex items-start gap-2">
+                <span className="text-xl font-semibold leading-snug">{card.word}</span>
                 <button
                   onClick={() => speak(card.word, card.lang)}
-                  className="text-muted hover:text-primary transition-colors"
+                  className="text-muted hover:text-primary transition-colors shrink-0 mt-1"
                   title="Ouvir"
                 >
                   <Volume2 size={18} />
@@ -85,7 +146,39 @@ export default function Review() {
               {revealed && (
                 <div className="mt-2 pt-3 border-t border-border w-full">
                   <p className="text-base text-foreground">{card.translation}</p>
-                  {card.example && <p className="text-xs text-muted/70 italic mt-2">{card.example}</p>}
+
+                  {/* Variations (paraphrases) — generated on demand */}
+                  {variations === null ? (
+                    <button
+                      onClick={loadVariations}
+                      disabled={varLoading}
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs text-primary/80 hover:text-primary transition-colors disabled:opacity-50"
+                    >
+                      {varLoading ? <Loader2 size={13} className="animate-spin" /> : <Shuffle size={13} />}
+                      {varLoading ? 'Gerando variações...' : 'Ver variações'}
+                    </button>
+                  ) : variations.length > 0 ? (
+                    <div className="mt-3 space-y-1.5 text-left">
+                      <p className="text-[10px] uppercase tracking-wider text-muted/50">Outras formas de dizer</p>
+                      {variations.map((v, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                          <button
+                            onClick={() => speak(v.text, card.lang)}
+                            className="text-muted hover:text-primary transition-colors shrink-0 mt-0.5"
+                            title="Ouvir"
+                          >
+                            <Volume2 size={13} />
+                          </button>
+                          <div>
+                            <p className="text-sm text-foreground/90">{v.text}</p>
+                            {v.translation && <p className="text-xs text-muted/60">{v.translation}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted/50">Sem variações disponíveis.</p>
+                  )}
                 </div>
               )}
             </div>

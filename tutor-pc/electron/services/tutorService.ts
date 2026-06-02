@@ -1,6 +1,6 @@
 import { CredentialsService } from './credentialsService'
 import { SettingsService } from './settingsService'
-import { buildSystemPrompt, buildLookupPrompt } from '../lib/tutorPrompt.js'
+import { buildSystemPrompt, buildLookupPrompt, buildVariationsPrompt } from '../lib/tutorPrompt.js'
 
 export { buildSystemPrompt } from '../lib/tutorPrompt.js'
 
@@ -13,8 +13,10 @@ export interface VocabItem {
 
 export interface TutorAnalysis {
   transcript: string
-  pinyin?: string       // full pinyin of transcript (only for Chinese)
-  englishText?: string  // English translation (only when content is not English)
+  pinyin?: string        // full pinyin of transcript (only for Chinese)
+  romanization?: string  // full romanization of the transcript
+  englishText?: string   // English translation (only when content is not English)
+  translation?: string   // Brazilian Portuguese translation of the whole sentence
   vocab: VocabItem[]
   tip: string
   contentLanguage: string
@@ -44,17 +46,35 @@ export class TutorService {
     const raw = await this.callProvider(activeAiProvider, apiKey, transcript, detectedLanguage)
 
     try {
-      const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; englishText?: string }
+      const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; englishText?: string; translation?: string }
       return {
         transcript,
         romanization: parsed.romanization,
         englishText: parsed.englishText,
+        translation: parsed.translation,
         vocab: parsed.vocab ?? [],
         tip: parsed.tip ?? '',
         contentLanguage: detectedLanguage,
       }
     } catch {
       return { transcript, vocab: [], tip: '', contentLanguage: detectedLanguage }
+    }
+  }
+
+  /** On-demand paraphrases of a sentence for varied practice. */
+  async variations(sentence: string, lang: string): Promise<Array<{ text: string; translation: string }>> {
+    const { activeAiProvider } = this.settings.getAll()
+    const apiKey = this.credentials.get(activeAiProvider)
+    if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
+
+    const raw = await this.dispatch(activeAiProvider, apiKey, sentence, buildVariationsPrompt(sentence, lang))
+    try {
+      const parsed = JSON.parse(raw) as { variations?: Array<{ text?: string; translation?: string }> }
+      return (parsed.variations ?? [])
+        .filter(v => v?.text?.trim())
+        .map(v => ({ text: v.text!.trim(), translation: (v.translation ?? '').trim() }))
+    } catch {
+      return []
     }
   }
 

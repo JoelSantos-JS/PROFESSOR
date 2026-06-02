@@ -4,6 +4,26 @@ import {
   NO_SPEECH_THRESHOLD, type WhisperSegment,
 } from './transcriptFilter'
 
+describe('isNonSpeech — refined signals', () => {
+  it('rejects borderline-on-BOTH signals (forced garbage like "Thank you deix toughest")', () => {
+    // Neither alone trips a hard threshold, but together they do.
+    expect(isNonSpeech([{ no_speech_prob: 0.45, avg_logprob: -0.65 }])).toBe(true)
+  })
+
+  it('keeps speech that is borderline on only ONE signal', () => {
+    expect(isNonSpeech([{ no_speech_prob: 0.45, avg_logprob: -0.3 }])).toBe(false) // noisy but confident
+    expect(isNonSpeech([{ no_speech_prob: 0.1,  avg_logprob: -0.7 }])).toBe(false) // low conf but clearly speech
+  })
+
+  it('rejects high compression_ratio (repetitive hallucination)', () => {
+    expect(isNonSpeech([{ no_speech_prob: 0.1, avg_logprob: -0.3, compression_ratio: 2.6 }])).toBe(true)
+  })
+
+  it('keeps normal compression_ratio', () => {
+    expect(isNonSpeech([{ no_speech_prob: 0.1, avg_logprob: -0.3, compression_ratio: 1.8 }])).toBe(false)
+  })
+})
+
 describe('isNonSpeech', () => {
   it('false for empty segments (no signal → trust text)', () => {
     expect(isNonSpeech([])).toBe(false)
@@ -57,11 +77,35 @@ describe('isHallucinationPhrase', () => {
     expect(isHallucinationPhrase('  ...  ')).toBe(true)
   })
 
+  it('flags standalone sound-event words', () => {
+    expect(isHallucinationPhrase('Music')).toBe(true)
+    expect(isHallucinationPhrase('music.')).toBe(true)
+    expect(isHallucinationPhrase('Applause')).toBe(true)
+    expect(isHallucinationPhrase('Laughter')).toBe(true)
+    expect(isHallucinationPhrase('[Music]')).toBe(true)
+    expect(isHallucinationPhrase('(applause)')).toBe(true)
+  })
+
+  it('flags descriptive sound annotations', () => {
+    expect(isHallucinationPhrase('upbeat music')).toBe(true)
+    expect(isHallucinationPhrase('soft music')).toBe(true)
+    expect(isHallucinationPhrase('[dramatic music]')).toBe(true)
+    expect(isHallucinationPhrase('(gentle music playing)')).toBe(true) // fully wrapped = sound event
+    expect(isHallucinationPhrase('(door creaks)')).toBe(true)
+    expect(isHallucinationPhrase('♪ music ♪')).toBe(true)
+  })
+
   it('does NOT flag real short dialogue', () => {
     expect(isHallucinationPhrase('Thank you.')).toBe(false)  // real in dialogue
     expect(isHallucinationPhrase('I')).toBe(false)
     expect(isHallucinationPhrase('Yes.')).toBe(false)
     expect(isHallucinationPhrase('Sherlock Holmes')).toBe(false)
+  })
+
+  it('does NOT flag a sound word inside a real sentence', () => {
+    expect(isHallucinationPhrase('I love this music')).toBe(false)
+    expect(isHallucinationPhrase('Turn the music down')).toBe(false)
+    expect(isHallucinationPhrase('The applause was deafening')).toBe(false)
   })
 
   it('is case/punctuation insensitive', () => {

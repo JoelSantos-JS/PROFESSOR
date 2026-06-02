@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, isEnglishLang, resolveRomanization, ROMANIZATION_SYSTEM } from './tutorPrompt'
+import { buildSystemPrompt, isEnglishLang, resolveRomanization, ROMANIZATION_SYSTEM, buildVariationsPrompt } from './tutorPrompt'
+
+describe('buildSystemPrompt — sentence translation field', () => {
+  it('always requests a Portuguese translation of the whole sentence', () => {
+    expect(buildSystemPrompt('en')).toContain('"translation"')
+    expect(buildSystemPrompt('ko')).toContain('"translation"')
+  })
+  it('describes translation as Brazilian Portuguese of the whole transcript', () => {
+    expect(buildSystemPrompt('en').toLowerCase()).toContain('portuguese translation of the whole transcript')
+  })
+})
+
+describe('buildVariationsPrompt', () => {
+  it('includes the sentence and language code', () => {
+    const p = buildVariationsPrompt('How are you?', 'en')
+    expect(p).toContain('How are you?')
+    expect(p).toContain('"en"')
+  })
+  it('asks for a variations JSON array with text + translation', () => {
+    const p = buildVariationsPrompt('Olá', 'pt')
+    expect(p).toContain('"variations"')
+    expect(p).toContain('"text"')
+    expect(p).toContain('"translation"')
+  })
+  it('requests 2-3 natural variations', () => {
+    expect(buildVariationsPrompt('hi', 'en')).toMatch(/2-3 variations/)
+  })
+})
 
 describe('resolveRomanization — base-language fallback', () => {
   it('matches exact codes', () => {

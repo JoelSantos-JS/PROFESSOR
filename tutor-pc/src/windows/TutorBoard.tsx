@@ -77,26 +77,30 @@ async function speak(text: string, lang: string, opts?: SpeakOpts): Promise<Word
   }
 }
 
+type Entry = TutorAnalysis & { id: string }
 
 export default function TutorBoard() {
-  const [entries, setEntries] = useState<TutorAnalysis[]>([])
+  const [entries, setEntries] = useState<Entry[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     return onChannel('tutor:analysis', (raw) => {
       const analysis = raw as TutorAnalysis
       if (!analysis.transcript) return
+      // Stable id so React keeps each card's local state with its entry even
+      // when capAudioMemory drops older ones (index keys would misalign state).
+      const entry: Entry = { ...analysis, id: crypto.randomUUID() }
       // Keep entries under the in-memory audio budget (drops oldest clips)
-      setEntries(prev => capAudioMemory([...prev, analysis], undefined, e => e.originalAudioUrl))
-      // Persist vocab for spaced repetition
-      if (analysis.vocab?.length) {
-        storeAPI.addVocab(analysis.vocab.map(v => ({
-          word: v.word,
-          romanization: v.romanization,
-          translation: v.translation,
-          example: v.example,
+      setEntries(prev => capAudioMemory([...prev, entry], undefined, e => e.originalAudioUrl))
+      // Persist the whole SENTENCE as a spaced-repetition card (not single words)
+      const translation = analysis.translation ?? analysis.englishText ?? ''
+      if (analysis.transcript.trim() && translation) {
+        storeAPI.addVocab([{
+          word: analysis.transcript,
+          romanization: analysis.romanization,
+          translation,
           lang: analysis.contentLanguage,
-        }))).catch(console.error)
+        }]).catch(console.error)
       }
     })
   }, [])
@@ -118,7 +122,7 @@ export default function TutorBoard() {
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {entries.map((entry, i) => (
-            <EntryCard key={i} entry={entry} index={i + 1} />
+            <EntryCard key={entry.id} entry={entry} index={i + 1} />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -157,8 +161,22 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
   }, [entry.transcript, entry.contentLanguage])
 
   const recorderRef    = useRef<MediaRecorder | null>(null)
+  const streamRef      = useRef<MediaStream | null>(null)
   const chunksRef      = useRef<Blob[]>([])
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pausedByMeRef  = useRef(false)
+
+  // Tear down practice on unmount (e.g. an old card dropped by the audio cache)
+  // so timers/recorder/mic stream don't leak and listening isn't left paused.
+  useEffect(() => () => {
+    if (countdownTimer.current) clearInterval(countdownTimer.current)
+    const rec = recorderRef.current
+    if (rec) { rec.onstop = null; try { if (rec.state === 'recording') rec.stop() } catch { /* ignore */ } }
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    recorderRef.current = null
+    if (pausedByMeRef.current) { listeningAPI.resume(); pausedByMeRef.current = false }
+  }, [])
 
   const handleListen = useCallback(async () => {
     setPlayMode('tts')
@@ -186,6 +204,7 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
     recorderRef.current?.stop()
     recorderRef.current = null
     listeningAPI.resume()
+    pausedByMeRef.current = false
   }, [])
 
   const startPractice = useCallback(async () => {
@@ -206,8 +225,10 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
 
   const beginRecording = useCallback(async () => {
     listeningAPI.pause()
+    pausedByMeRef.current = true
     try {
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      streamRef.current = micStream
       const mimeType  = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
       const recorder  = new MediaRecorder(micStream, { mimeType })
       recorderRef.current = recorder
@@ -217,7 +238,9 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
 
       recorder.onstop = async () => {
         micStream.getTracks().forEach(t => t.stop())
+        streamRef.current = null
         listeningAPI.resume()
+        pausedByMeRef.current = false
         setPractice('transcribing')
 
         const blob = new Blob(chunksRef.current, { type: mimeType })
@@ -243,6 +266,7 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
               diff,
               audioUrl,
               originalAudioUrl: entry.originalAudioUrl,
+              originalCues: entry.originalCues,
               lang:     entry.contentLanguage,
               at:       Date.now(),
             })
@@ -264,6 +288,7 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
       setTimeout(() => { if (recorder.state === 'recording') recorder.stop() }, maxMs)
     } catch {
       listeningAPI.resume()
+      pausedByMeRef.current = false
       setPractice('idle')
     }
   }, [entry.transcript])

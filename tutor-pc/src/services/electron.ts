@@ -5,6 +5,8 @@ export const windowAPI = {
   close: () => window.api.window.close(),
   hide: () => window.api.window.hide(),
   show: (name: WindowName) => window.api.window.show(name),
+  openReview: (lang?: string) => window.api.window.openReview(lang),
+  pendingReviewLang: (): Promise<string | null> => window.api.window.pendingReviewLang(),
 }
 
 export const settingsAPI = {
@@ -30,6 +32,7 @@ export const audioAPI = {
 export const tutorAPI = {
   analyze: (transcript: string, language: string, audioUrl?: string, cues?: WordCue[]) => window.api.tutor.analyze(transcript, language, audioUrl, cues),
   lookup: (word: string, context: string, language: string) => window.api.tutor.lookup(word, context, language),
+  variations: (sentence: string, language: string) => window.api.tutor.variations(sentence, language),
 }
 
 export const ttsAPI = {
@@ -53,11 +56,12 @@ export const sessionAPI = {
 }
 
 export const storeAPI = {
-  stats:          () => window.api.store.stats(),
+  stats:          (lang?: string) => window.api.store.stats(lang),
+  languages:      () => window.api.store.languages(),
   recordSession:  (lineCount: number) => window.api.store.recordSession(lineCount),
   addVocab:       (items: Parameters<typeof window.api.store.addVocab>[0]) => window.api.store.addVocab(items),
   recordMistakes: (words: Parameters<typeof window.api.store.recordMistakes>[0]) => window.api.store.recordMistakes(words),
-  dueVocab:       () => window.api.store.dueVocab(),
+  dueVocab:       (lang?: string) => window.api.store.dueVocab(lang),
   gradeVocab:     (id: string, next: Parameters<typeof window.api.store.gradeVocab>[1]) => window.api.store.gradeVocab(id, next),
 }
 

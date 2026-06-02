@@ -34,6 +34,18 @@ export function setupTutorHandlers(windowManager: WindowManager): void {
     }
   })
 
+  // On-demand sentence variations (paraphrases) for varied practice
+  ipcMain.handle('tutor:variations', async (_e, sentence: string, lang: string) => {
+    if (!sentence?.trim()) return { ok: false, error: 'empty' }
+    try {
+      const variations = await tutor.variations(sentence, lang)
+      return { ok: true, variations }
+    } catch (err) {
+      console.error('[tutor] variations error:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
   // On-demand single-word dictionary lookup (click a word)
   ipcMain.handle('tutor:lookup', async (_e, word: string, context: string, lang: string) => {
     if (!word?.trim()) return { ok: false, error: 'empty' }

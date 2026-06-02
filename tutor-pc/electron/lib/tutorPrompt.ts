@@ -79,6 +79,7 @@ ${langNote}When given a transcribed audio segment, respond with a JSON object (n
 {
 ${romanizationField}
 ${englishField}
+  "translation": "tradução natural da frase inteira para português (Brasil)",
   "vocab": [
     {
       "word": "word or phrase in original language",
@@ -91,8 +92,33 @@ ${vocabRoma}
 }
 
 Rules:
-${roma ? '- romanization: MANDATORY. Provide it for the full transcript and for each vocab word. Never omit it.\n' : ''}- vocab: 1-4 most useful words/phrases for a learner. Skip trivial words (a, the, is, etc).
+${roma ? '- romanization: MANDATORY. Provide it for the full transcript and for each vocab word. Never omit it.\n' : ''}- translation: a fluent Brazilian Portuguese translation of the WHOLE transcript.
+- vocab: 1-4 most useful words/phrases for a learner. Skip trivial words (a, the, is, etc).
 - tip: grammar, pronunciation, idiom explanation, or cultural context.
 ${isEnglish ? '' : '- englishText: a fluent English translation of the whole transcript.\n'}- If transcript is trivial/too short, return {"vocab":[],"tip":""}
 - Respond ONLY with raw JSON. No markdown fences, no explanation.`
+}
+
+/**
+ * Prompt for generating natural VARIATIONS (paraphrases) of a sentence, so the
+ * learner can practice saying the same idea different ways. Generated on demand.
+ */
+export function buildVariationsPrompt(sentence: string, lang: string): string {
+  return `You help a Portuguese (Brazilian) speaker practice language code "${lang}".
+Given a sentence, produce 3 natural alternative ways a native speaker could say the SAME idea
+(different wording/register), each with its Brazilian Portuguese translation.
+
+Sentence: "${sentence}"
+
+Respond with raw JSON only (no markdown):
+{
+  "variations": [
+    { "text": "alternative phrasing in ${lang}", "translation": "tradução em português" }
+  ]
+}
+
+Rules:
+- Exactly 2-3 variations, all in language "${lang}", natural and conversational.
+- Keep roughly the same meaning; vary vocabulary/structure/formality.
+- Respond ONLY with raw JSON.`
 }

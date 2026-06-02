@@ -6,15 +6,25 @@ export interface DecodedAudio {
   sampleRate: number
 }
 
+// One shared AudioContext for all decoding. Creating a new context per call
+// quickly hits Chromium's ~6-context limit and makes decodeAudioData fail.
+let sharedCtx: AudioContext | null = null
+function getCtx(): AudioContext {
+  if (!sharedCtx) {
+    const Ctx: typeof AudioContext =
+      window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    sharedCtx = new Ctx()
+  }
+  return sharedCtx
+}
+
 export async function decodeToMono(dataUrl: string): Promise<DecodedAudio | null> {
+  if (!dataUrl) return null
   try {
     const resp = await fetch(dataUrl)
     const arr = await resp.arrayBuffer()
-    const Ctx: typeof AudioContext =
-      window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    const ctx = new Ctx()
-    const audio = await ctx.decodeAudioData(arr)
-    ctx.close()
+    // decodeAudioData detaches the buffer; slice() gives it a private copy.
+    const audio = await getCtx().decodeAudioData(arr.slice(0))
 
     const channels = audio.numberOfChannels
     const len = audio.length
@@ -24,7 +34,8 @@ export async function decodeToMono(dataUrl: string): Promise<DecodedAudio | null
       for (let i = 0; i < len; i++) mono[i] += data[i] / channels
     }
     return { samples: mono, sampleRate: audio.sampleRate }
-  } catch {
+  } catch (err) {
+    console.error('[pitch] decode failed:', (err as Error)?.message)
     return null
   }
 }

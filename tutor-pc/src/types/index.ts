@@ -11,6 +11,7 @@ export interface TutorAnalysis {
   transcript: string
   romanization?: string  // full romanization of the transcript
   englishText?: string   // English translation (when content is not English)
+  translation?: string   // Brazilian Portuguese translation of the whole sentence
   vocab: VocabItem[]
   tip: string
   contentLanguage: string
@@ -30,6 +31,11 @@ export interface WordLookup {
   romanization?: string
   meanings: string[]
   note?: string
+}
+
+export interface SentenceVariation {
+  text: string
+  translation: string
 }
 
 export type WordStatus = 'ok' | 'missing' | 'extra'
@@ -57,11 +63,18 @@ export interface MistakeRecord {
   lastAt: number
 }
 
+export interface LangStat {
+  lang: string
+  total: number
+  due: number
+}
+
 export interface StoreStats {
   sessionCount: number
   phraseCount: number
   dueCount: number
   streak: number
+  languages: LangStat[]
   recentSessions: { id: string; startedAt: number; lineCount: number }[]
   topMistakes: MistakeRecord[]
 }
@@ -73,6 +86,7 @@ export interface SessionAttempt {
   diff: DiffToken[]          // LCS-aligned word diff (ok/missing/extra)
   audioUrl?: string          // the user's own recording (data URL) to replay
   originalAudioUrl?: string  // the scene's clip for this sentence (for comparison)
+  originalCues?: WordCue[]   // per-word timings of the original (to drill single words)
   lang: string
   at: number  // timestamp ms
 }
@@ -113,6 +127,8 @@ export interface IpcAPI {
     close: () => void
     hide: () => void
     show: (name: WindowName) => void
+    openReview: (lang?: string) => void
+    pendingReviewLang: () => Promise<string | null>
   }
   settings: {
     getAll: () => Promise<AppSettings>
@@ -132,6 +148,7 @@ export interface IpcAPI {
   tutor: {
     analyze: (transcript: string, language: string, audioUrl?: string, cues?: WordCue[]) => Promise<{ ok: boolean; error?: string }>
     lookup: (word: string, context: string, language: string) => Promise<{ ok: boolean; result?: WordLookup; error?: string }>
+    variations: (sentence: string, language: string) => Promise<{ ok: boolean; variations?: SentenceVariation[]; error?: string }>
   }
   tts: {
     speak: (text: string, lang: string) => Promise<{ ok: boolean; dataUrl?: string; cues?: WordCue[]; error?: string }>
@@ -150,11 +167,12 @@ export interface IpcAPI {
     reset:  () => void
   }
   store: {
-    stats:          () => Promise<StoreStats>
+    stats:          (lang?: string) => Promise<StoreStats>
+    languages:      () => Promise<LangStat[]>
     recordSession:  (lineCount: number) => Promise<{ ok: boolean }>
     addVocab:       (items: Array<{ word: string; romanization?: string; translation: string; example?: string; lang: string }>) => Promise<{ ok: boolean }>
     recordMistakes: (words: Array<{ word: string; lang: string }>) => Promise<{ ok: boolean }>
-    dueVocab:       () => Promise<VocabCard[]>
+    dueVocab:       (lang?: string) => Promise<VocabCard[]>
     gradeVocab:     (id: string, next: { ease: number; interval: number; reps: number; due: number; lapsed: boolean }) => Promise<{ ok: boolean }>
   }
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void

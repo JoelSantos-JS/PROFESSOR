@@ -7,8 +7,9 @@ import { onSentence, onPracticeDone, onAbort, INITIAL_MONITOR, type MonitorState
 import { usePractice, practiceMaxMs, blobToDataUrl } from '../hooks/usePractice'
 import DiffView from '../components/DiffView'
 import PronunciationCompare from '../components/PronunciationCompare'
+import WordDrill from '../components/WordDrill'
 import { playClip } from '../lib/playClip'
-import type { SessionAttempt, DiffToken } from '../types'
+import type { SessionAttempt, DiffToken, WordCue } from '../types'
 
 type State = 'idle' | 'listening' | 'processing'
 
@@ -33,6 +34,7 @@ export default function FloatingBar() {
   const sessionLinesRef           = useRef(0)     // lines captured this session
   const transcriptLangRef         = useRef<string>('')  // last detected language
   const lastAudioRef              = useRef<string>('')  // last captured original clip (data URL)
+  const lastCuesRef               = useRef<WordCue[]>([])  // per-word timings of the last clip
 
   // Auto-practice (monitoring) mode
   const [autoMode, setAutoMode]   = useState(false)
@@ -112,8 +114,9 @@ export default function FloatingBar() {
           // Keep the ORIGINAL captured audio so it can be replayed (in-memory data URL)
           const originalAudioUrl = await blobToDataUrl(blob)
           lastAudioRef.current = originalAudioUrl
+          lastCuesRef.current = result.cues ?? []
           setTranscript(text)
-          setLines(prev => [...prev, text])
+          setLines(prev => [...prev, text].slice(-400))  // bound the transcript feed
           setError(null)
           tutorAPI.analyze(text, result.language ?? '', originalAudioUrl, result.cues).catch(console.error)
 
@@ -354,7 +357,8 @@ export default function FloatingBar() {
   // the result); the tab badge count signals new attempts instead.
   useEffect(() => {
     return onChannel('session:attempt', (raw) => {
-      setAttempts(prev => [...prev, raw as SessionAttempt])
+      // Cap retained attempts — each holds audio data URLs (bounds memory)
+      setAttempts(prev => [...prev, raw as SessionAttempt].slice(-60))
       if (!practiceSentenceRef.current) setActiveTab('sessao')
     })
   }, [])
@@ -426,6 +430,7 @@ export default function FloatingBar() {
           sentence={practiceSentence}
           lang={transcriptLangRef.current}
           originalAudioUrl={lastAudioRef.current}
+          originalCues={lastCuesRef.current}
           onDone={handlePracticeDone}
         />
       ) : (
@@ -508,10 +513,11 @@ function AudioMeter({ level, gate }: { level: number; gate: number }) {
 }
 
 // ── Auto-practice overlay (repeat the paused sentence) ────────────────────────
-function AutoPractice({ sentence, lang, originalAudioUrl, onDone }: {
+function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }: {
   sentence: string
   lang: string
   originalAudioUrl?: string
+  originalCues?: WordCue[]
   onDone: () => void
 }) {
   const { state, countdown, start, stop, cancel } = usePractice()
@@ -526,7 +532,7 @@ function AutoPractice({ sentence, lang, originalAudioUrl, onDone }: {
       const missed = diff.filter(d => d.status === 'missing').map(d => ({ word: d.word, lang }))
       if (missed.length) storeAPI.recordMistakes(missed).catch(console.error)
       // Save to the "Sessão" tab so it can be reviewed/replayed later
-      sessionAPI.addAttempt({ original: sentence, spoken: text, score, diff, audioUrl, originalAudioUrl, lang, at: Date.now() })
+      sessionAPI.addAttempt({ original: sentence, spoken: text, score, diff, audioUrl, originalAudioUrl, originalCues, lang, at: Date.now() })
     })
   }, [sentence, lang, start])
 
@@ -740,6 +746,9 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
 
           {/* Word-by-word diff (ok / missing / extra) */}
           <DiffView diff={a.diff} />
+
+          {/* Rigorous drill of the words you got wrong */}
+          <WordDrill attempt={a} />
 
           {/* Intonation comparator: my voice vs original vs TTS */}
           <PronunciationCompare attempt={a} />

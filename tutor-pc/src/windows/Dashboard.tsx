@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Activity, BookOpen, Mic, Settings, Zap, AlertTriangle } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
 import { windowAPI, storeAPI } from '../services/electron'
+import { languageLabel } from '../lib/languages'
 import type { StoreStats } from '../types'
 
 export default function Dashboard() {
@@ -53,13 +54,40 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Review CTA */}
+          {/* Languages being learned — click one to review just that deck */}
+          {stats && stats.languages.length > 0 && (
+            <div className="mb-6">
+              <span className="text-xs text-muted">Revisar por idioma:</span>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {stats.languages.map(l => (
+                  <button
+                    key={l.lang}
+                    onClick={() => windowAPI.openReview(l.lang)}
+                    disabled={l.due === 0}
+                    className={[
+                      'flex items-center gap-1.5 text-xs rounded-full px-2.5 py-1 border transition-colors',
+                      l.due > 0
+                        ? 'bg-surface border-border hover:border-primary/50 hover:bg-primary/10 cursor-pointer'
+                        : 'bg-surface/50 border-border/50 text-muted/50 cursor-default',
+                    ].join(' ')}
+                    title={l.due > 0 ? `Revisar ${l.due} de ${languageLabel(l.lang)}` : 'Nada a revisar agora'}
+                  >
+                    {languageLabel(l.lang)}
+                    <span className="text-muted/60">{l.total}</span>
+                    {l.due > 0 && <span className="text-warning">· {l.due} a revisar</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Review CTA (all languages) */}
           <button
-            onClick={() => windowAPI.show('review')}
+            onClick={() => windowAPI.openReview()}
             className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:bg-primary/80 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors mb-8"
           >
             <BookOpen size={16} />
-            Revisar {stats?.dueCount ? `(${stats.dueCount} pendentes)` : 'vocabulário'}
+            Revisar {stats?.dueCount ? `tudo (${stats.dueCount} pendentes)` : 'vocabulário'}
           </button>
 
           {/* Words I mispronounce most */}
