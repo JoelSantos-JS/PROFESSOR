@@ -1,16 +1,60 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #3B82F6;
-  --color-danger: #EF4444;
-  --color-warning: #F59E0B;
-  --color-success: #10B981;
-  --color-background: #070D17;
-  --color-surface: #0D1826;
-  --color-surface-2: #152034;
-  --color-border: #1E2E47;
-  --color-foreground: #DDE6F4;
-  --color-muted: #7B90AB;
+  --color-primary: #C2683F;
+  --color-danger: #C5564F;
+  --color-warning: #C98A2B;
+  --color-success: #4F9D6B;
+  --color-background: #F3EAE0;
+  --color-surface: #FCF7F1;
+  --color-surface-2: #F1E6DA;
+  --color-border: #E5D8C9;
+  --color-foreground: #3A2E26;
+  --color-muted: #9C8A78;
+}
+
+:root {
+  --font-ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-full: 999px;
+
+  --bg: #F3EAE0;
+  --bg-grain: #ECE0D2;
+  --surface: #FCF7F1;
+  --surface-2: #F1E6DA;
+  --raised: #FFFFFF;
+  --border: #E5D8C9;
+  --border-strong: #D5C3AE;
+  --ink: #3A2E26;
+  --ink-2: #6E5A4B;
+  --muted: #9C8A78;
+  --brand: #C2683F;
+  --brand-ink: #A6532E;
+  --brand-soft: #F3E0D4;
+  --support: #5B7E63;
+  --support-soft: #E5ECE0;
+
+  --orig: #3E7BB6;
+  --orig-soft: #E4EEF7;
+  --tts: #C98A2B;
+  --tts-soft: #F6ECD8;
+  --you: #8B6FD4;
+  --you-soft: #ECE5F8;
+
+  --good: #4F9D6B;
+  --ok: #C98A2B;
+  --bad: #C5564F;
+
+  --sh-1: 0 1px 2px rgba(40, 55, 46, .05), 0 1px 3px rgba(40, 55, 46, .06);
+  --sh-2: 0 4px 14px rgba(40, 55, 46, .08), 0 2px 6px rgba(40, 55, 46, .05);
+  --sh-3: 0 18px 48px rgba(33, 46, 38, .18), 0 6px 18px rgba(33, 46, 38, .10);
+  --sh-bar: 0 12px 40px rgba(20, 30, 24, .28), 0 2px 8px rgba(20, 30, 24, .18);
 }
 
 *,
@@ -30,28 +74,243 @@ body,
 
 body {
   background: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  color: var(--ink);
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Remove default focus outline — handled per component */
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--brand-soft);
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-/* Dark scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 10px;
+  height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #1E2E47;
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
+}
+
+.app-paper {
+  background:
+    radial-gradient(120% 90% at 75% 10%, rgba(255, 220, 172, .34), transparent 55%),
+    radial-gradient(120% 100% at 5% 100%, rgba(91, 126, 99, .16), transparent 58%),
+    var(--bg);
+  color: var(--ink);
+}
+
+.paper-card {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+}
+
+.paper-card-hover {
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+.paper-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand);
+  box-shadow: var(--sh-2);
+}
+
+.display-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+.label-eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--r-full);
+  font-weight: 700;
+  transition: background .14s ease, color .14s ease, border-color .14s ease, transform .12s ease;
+  white-space: nowrap;
+}
+
+.pill-button:active {
+  transform: translateY(1px);
+}
+
+.pill-primary {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+
+.pill-primary:hover {
+  background: var(--brand-ink);
+}
+
+.pill-soft {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+.pill-soft:hover {
+  filter: brightness(.97);
+}
+
+.pill-ghost {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--ink-2);
+}
+
+.pill-ghost:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.audio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  padding: 6px 12px 6px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: filter .14s ease, transform .12s ease;
+}
+
+.audio-chip:active {
+  transform: translateY(1px);
+}
+
+.audio-chip:hover {
+  filter: brightness(.975);
+}
+
+.audio-chip .dot {
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #2a3f5f;
+
+.audio-orig {
+  background: var(--orig-soft);
+  color: var(--orig);
+}
+
+.audio-orig .dot {
+  background: var(--orig);
+}
+
+.audio-tts {
+  background: var(--tts-soft);
+  color: #9A6A1E;
+}
+
+.audio-tts .dot {
+  background: var(--tts);
+}
+
+.audio-you {
+  background: var(--you-soft);
+  color: #6B51B0;
+}
+
+.audio-you .dot {
+  background: var(--you);
+}
+
+.score-badge {
+  border-radius: var(--r-full);
+  padding: 4px 11px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.score-good {
+  background: #E3F0E8;
+  color: var(--good);
+}
+
+.score-ok {
+  background: #F6ECD8;
+  color: #9A6A1E;
+}
+
+.score-bad {
+  background: #F4DCDA;
+  color: var(--bad);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bad);
+  animation: livePulse 1.3s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%,
+  100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-up {
+  animation: fadeUp .34s cubic-bezier(.2, .7, .3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation: none !important;
+  }
 }

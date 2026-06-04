@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 import { WindowName, windowConfigs } from './windowConfigs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const FLOATING_BAR_SIZE = { width: 420, height: 600 }
 
 export class WindowManager {
   private windows = new Map<WindowName, BW>()
@@ -34,8 +35,16 @@ export class WindowManager {
       },
     })
 
+    if (name === 'floating-bar') {
+      this.lockFloatingBarSize(win)
+      win.on('resize', () => this.lockFloatingBarSize(win))
+    }
+
     win.once('ready-to-show', () => {
-      if (name === 'floating-bar') this.positionFloatingBar(win)
+      if (name === 'floating-bar') {
+        this.lockFloatingBarSize(win)
+        this.positionFloatingBar(win)
+      }
       if (windowConfigs[name].startHidden) return  // stay hidden until explicitly shown
       win.show()
       if (name !== 'floating-bar') win.focus()
@@ -60,9 +69,14 @@ export class WindowManager {
   }
 
   showWindow(name: WindowName): void {
-    const win = this.windows.get(name)
-    if (win && !win.isDestroyed()) { win.show(); win.focus() }
-    else this.createWindow(name)
+    let win = this.windows.get(name)
+    // (Re)create if it was never made or was closed. createWindow honours
+    // `startHidden`, so we must still show() it explicitly below.
+    if (!win || win.isDestroyed()) win = this.createWindow(name)
+    if (name === 'floating-bar') this.lockFloatingBarSize(win)
+    win.show()
+    win.moveTop()
+    win.focus()
   }
 
   hideWindow(name: WindowName): void {
@@ -72,7 +86,13 @@ export class WindowManager {
   toggleWindow(name: WindowName): void {
     const win = this.windows.get(name)
     if (win && !win.isDestroyed()) {
-      win.isVisible() ? win.hide() : (win.show(), win.focus())
+      if (win.isVisible()) {
+        win.hide()
+      } else {
+        if (name === 'floating-bar') this.lockFloatingBarSize(win)
+        win.show()
+        win.focus()
+      }
     } else {
       this.createWindow(name)
     }
@@ -90,5 +110,22 @@ export class WindowManager {
     const { width: sw } = screen.getPrimaryDisplay().workAreaSize
     const [w] = win.getSize()
     win.setPosition(sw - w - 24, 24)
+  }
+
+  private lockFloatingBarSize(win: BW): void {
+    win.setResizable(false)
+    win.setMinimumSize(FLOATING_BAR_SIZE.width, FLOATING_BAR_SIZE.height)
+    win.setMaximumSize(FLOATING_BAR_SIZE.width, FLOATING_BAR_SIZE.height)
+
+    const [currentWidth, currentHeight] = win.getSize()
+    if (currentWidth !== FLOATING_BAR_SIZE.width || currentHeight !== FLOATING_BAR_SIZE.height) {
+      const [x, y] = win.getPosition()
+      win.setBounds({
+        x,
+        y,
+        width: FLOATING_BAR_SIZE.width,
+        height: FLOATING_BAR_SIZE.height,
+      })
+    }
   }
 }

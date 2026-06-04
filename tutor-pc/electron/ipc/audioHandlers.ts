@@ -36,7 +36,7 @@ export function setupAudioHandlers(): void {
   ipcMain.handle('audio:transcribe', async (_e, buffer: ArrayBuffer, hint?: string) => {
     try {
       const result = await audioService.transcribe(buffer, hint)
-      console.log(`[audio] transcribed (${result.language}):`, result.text?.slice(0, 80))
+      console.log(`[audio] transcribed (${result.language}) cues=${result.cues?.length ?? 0}:`, result.text?.slice(0, 60))
       return { text: result.text, language: result.language, cues: result.cues ?? [], error: null }
     } catch (err) {
       console.error('[audio] transcribe error:', (err as Error).message)

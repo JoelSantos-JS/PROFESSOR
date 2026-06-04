@@ -80,21 +80,21 @@ export default function Review() {
   }, [card])
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen app-paper text-foreground">
       <TitleBar title="Revisão" />
 
       {/* Language separator — one deck per studied language */}
       {languages.length > 1 && (
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/60 overflow-x-auto">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 overflow-x-auto bg-surface-2">
           {languages.map(l => (
             <button
               key={l.lang}
               onClick={() => loadDeck(l.lang)}
               className={[
-                'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full whitespace-nowrap transition-colors',
+                'pill-button text-xs px-3 py-1.5 whitespace-nowrap transition-colors border',
                 l.lang === selectedLang
-                  ? 'bg-primary/20 text-primary border border-primary/40'
-                  : 'text-muted hover:text-foreground hover:bg-surface-2 border border-transparent',
+                  ? 'bg-primary/15 text-primary border-primary/40'
+                  : 'text-muted hover:text-foreground hover:bg-white border-transparent',
               ].join(' ')}
             >
               {languageLabel(l.lang)}
@@ -106,14 +106,14 @@ export default function Review() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
+      <div className="flex-1 flex flex-col items-center justify-center p-7">
         {loading ? (
           <p className="text-sm text-muted">Carregando...</p>
         ) : !card ? (
           <div className="flex flex-col items-center gap-3 text-center">
             <Brain size={40} className="text-success opacity-50" />
-            <h2 className="text-lg font-semibold">
-              {done > 0 ? 'Revisão concluída! 🎉' : 'Nada para revisar agora'}
+            <h2 className="display-title text-2xl">
+              {done > 0 ? 'Revisão concluída!' : 'Nada para revisar agora'}
             </h2>
             <p className="text-sm text-muted">
               {done > 0
@@ -130,12 +130,12 @@ export default function Review() {
             </div>
 
             {/* Card */}
-            <div className="bg-surface border border-border rounded-2xl p-6 min-h-52 flex flex-col items-center justify-center text-center gap-3">
+            <div className="paper-card p-7 min-h-56 flex flex-col items-center justify-center text-center gap-3">
               <div className="flex items-start gap-2">
-                <span className="text-xl font-semibold leading-snug">{card.word}</span>
+                <span className="display-title text-[28px] leading-snug">{card.word}</span>
                 <button
                   onClick={() => speak(card.word, card.lang)}
-                  className="text-muted hover:text-primary transition-colors shrink-0 mt-1"
+                  className="text-muted hover:text-primary transition-colors shrink-0 mt-2"
                   title="Ouvir"
                 >
                   <Volume2 size={18} />
@@ -144,7 +144,7 @@ export default function Review() {
               {card.romanization && <span className="text-sm text-primary/70 font-mono">{card.romanization}</span>}
 
               {revealed && (
-                <div className="mt-2 pt-3 border-t border-border w-full">
+                <div className="mt-2 pt-4 border-t border-border w-full">
                   <p className="text-base text-foreground">{card.translation}</p>
 
                   {/* Variations (paraphrases) — generated on demand */}
@@ -152,7 +152,7 @@ export default function Review() {
                     <button
                       onClick={loadVariations}
                       disabled={varLoading}
-                      className="mt-3 inline-flex items-center gap-1.5 text-xs text-primary/80 hover:text-primary transition-colors disabled:opacity-50"
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary/80 hover:text-primary transition-colors disabled:opacity-50"
                     >
                       {varLoading ? <Loader2 size={13} className="animate-spin" /> : <Shuffle size={13} />}
                       {varLoading ? 'Gerando variações...' : 'Ver variações'}
@@ -187,19 +187,19 @@ export default function Review() {
             {!revealed ? (
               <button
                 onClick={() => setReveal(true)}
-                className="w-full mt-4 bg-primary hover:bg-primary/90 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+                className="w-full mt-4 pill-button pill-primary py-3 text-sm"
               >
                 Mostrar resposta
               </button>
             ) : (
               <div className="grid grid-cols-3 gap-2 mt-4">
-                <button onClick={() => grade(1)} className="flex flex-col items-center gap-1 bg-danger/15 text-danger hover:bg-danger/25 py-2.5 rounded-lg text-xs font-medium transition-colors">
+                <button onClick={() => grade(1)} className="flex flex-col items-center gap-1 bg-danger/15 text-danger hover:bg-danger/25 py-3 rounded-xl text-xs font-bold transition-colors">
                   <X size={16} /> Errei
                 </button>
-                <button onClick={() => grade(3)} className="flex flex-col items-center gap-1 bg-warning/15 text-warning hover:bg-warning/25 py-2.5 rounded-lg text-xs font-medium transition-colors">
+                <button onClick={() => grade(3)} className="flex flex-col items-center gap-1 bg-warning/15 text-warning hover:bg-warning/25 py-3 rounded-xl text-xs font-bold transition-colors">
                   <Brain size={16} /> Difícil
                 </button>
-                <button onClick={() => grade(5)} className="flex flex-col items-center gap-1 bg-success/15 text-success hover:bg-success/25 py-2.5 rounded-lg text-xs font-medium transition-colors">
+                <button onClick={() => grade(5)} className="flex flex-col items-center gap-1 bg-success/15 text-success hover:bg-success/25 py-3 rounded-xl text-xs font-bold transition-colors">
                   <Check size={16} /> Fácil
                 </button>
               </div>

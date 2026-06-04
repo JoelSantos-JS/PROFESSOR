@@ -103,3 +103,32 @@ describe('full cycle integration', () => {
     expect(s.phase).toBe('watching')
   })
 })
+
+import { MAX_PRACTICE_WORDS } from './monitor'
+
+describe('onSentence — run-on / long-capture guard', () => {
+  const longText = Array.from({ length: MAX_PRACTICE_WORDS + 5 }, (_, i) => `word${i}`).join(' ')
+
+  it('does NOT auto-practice a capture longer than the word cap', () => {
+    const { state, action } = onSentence(INITIAL_MONITOR, longText, true)
+    expect(action).toBe('none')
+    expect(state.phase).toBe('watching')  // stays watching, no pause
+  })
+
+  it('still practices a normal-length line', () => {
+    const { action } = onSentence(INITIAL_MONITOR, 'This is a normal line.', true)
+    expect(action).toBe('pause-and-practice')
+  })
+
+  it('does not queue an over-long capture while practicing', () => {
+    const practicing = { phase: 'practicing' as const, current: 'hi', queue: [] as string[] }
+    const { state, action } = onSentence(practicing, longText, true)
+    expect(action).toBe('none')
+    expect(state.queue).toEqual([])  // not queued
+  })
+
+  it('accepts a line exactly at the cap', () => {
+    const atCap = Array.from({ length: MAX_PRACTICE_WORDS }, () => 'w').join(' ')
+    expect(onSentence(INITIAL_MONITOR, atCap, true).action).toBe('pause-and-practice')
+  })
+})

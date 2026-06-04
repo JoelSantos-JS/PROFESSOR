@@ -5,6 +5,17 @@ import { isVoiced, peakLevel } from '../lib/audio'
 import { diffWords, scoreFromDiff } from '../lib/text'
 import { onSentence, onPracticeDone, onAbort, INITIAL_MONITOR, type MonitorState } from '../lib/monitor'
 import { usePractice, practiceMaxMs, blobToDataUrl } from '../hooks/usePractice'
+import { decodeBufferToMono } from '../lib/decodeAudio'
+import { encodeWav } from '../lib/wav'
+
+/** Re-encode a recorded blob to clean WAV (for reliable word timestamps and slicing). */
+async function toWavOrRaw(blob: Blob): Promise<{ buffer: ArrayBuffer; mimeType: string }> {
+  const raw = await blob.arrayBuffer()
+  const decoded = await decodeBufferToMono(raw)
+  return decoded
+    ? { buffer: encodeWav([decoded.samples], decoded.sampleRate), mimeType: 'audio/wav' }
+    : { buffer: raw, mimeType: blob.type || 'audio/webm' }
+}
 import DiffView from '../components/DiffView'
 import PronunciationCompare from '../components/PronunciationCompare'
 import WordDrill from '../components/WordDrill'
@@ -14,13 +25,13 @@ import type { SessionAttempt, DiffToken, WordCue } from '../types'
 type State = 'idle' | 'listening' | 'processing'
 
 const VAD_TICK_MS    = 80    // how often the VAD samples the analyser
-const SILENCE_END_MS = 1000  // wait a full second of silence before closing a sentence
-const MIN_SPEECH_MS  = 400
+const SILENCE_END_MS = 1450  // wait for a real pause before closing a sentence
+const MIN_SPEECH_MS  = 650
 const MAX_SPEECH_MS  = 20_000
-const IDLE_TRIM_MS   = 2000  // restart the recorder after this much idle silence (trim leading silence)
-const MIN_PEAK       = 22    // utterance must peak above this to count as real speech
-const VAD_THRESHOLD  = 14    // deviation from 128 to count a sample as voiced (lower = catches soft speech)
-const VAD_MIN_RATIO  = 0.04  // fraction of samples that must be voiced
+const IDLE_TRIM_MS   = 1600  // restart the recorder after this much idle silence (trim leading silence)
+const MIN_PEAK       = 26    // utterance must peak above this to count as real speech
+const VAD_THRESHOLD  = 16    // deviation from 128 to count a sample as voiced (lower = catches soft speech)
+const VAD_MIN_RATIO  = 0.055 // fraction of samples that must be voiced
 
 export default function FloatingBar() {
   const [state, setState]         = useState<State>('idle')
@@ -100,8 +111,11 @@ export default function FloatingBar() {
     const blob = new Blob(chunks, { type: mimeType })
     let startedPractice = false
     try {
-      const buf = await blob.arrayBuffer()
-      const result = await audioAPI.transcribe(buf)
+      // Re-encode to WAV — MediaRecorder's streaming WebM has no container
+      // duration, which makes Whisper drop word-level timestamps (no karaoke /
+      // word slicing). A clean WAV restores them. Falls back to the raw blob.
+      const { buffer, mimeType: playableMimeType } = await toWavOrRaw(blob)
+      const result = await audioAPI.transcribe(buffer)
       if (result.error) {
         setError(result.error)
       } else if (result.text) {
@@ -112,7 +126,7 @@ export default function FloatingBar() {
           transcriptLangRef.current = result.language ?? ''
           sessionLinesRef.current += 1
           // Keep the ORIGINAL captured audio so it can be replayed (in-memory data URL)
-          const originalAudioUrl = await blobToDataUrl(blob)
+          const originalAudioUrl = await blobToDataUrl(new Blob([buffer], { type: playableMimeType }))
           lastAudioRef.current = originalAudioUrl
           lastCuesRef.current = result.cues ?? []
           setTranscript(text)
@@ -168,20 +182,21 @@ export default function FloatingBar() {
 
       const source = ctx.createMediaStreamSource(sysStream)
 
-      // Gentle compressor: lifts quiet dialogue so Whisper hears it better.
+      // Light peak limiter only — tames harsh peaks but leaves normal dialogue
+      // untouched (over-compression muffles consonants and hurts transcription).
       const comp = ctx.createDynamicsCompressor()
-      comp.threshold.value = -28   // start compressing fairly early
-      comp.knee.value      = 24
-      comp.ratio.value     = 3     // gentle
-      comp.attack.value    = 0.003
+      comp.threshold.value = -10   // only act on loud peaks
+      comp.knee.value      = 10
+      comp.ratio.value     = 2.5
+      comp.attack.value    = 0.004
       comp.release.value   = 0.25
       const makeup = ctx.createGain()
-      makeup.gain.value    = 1.4   // modest makeup gain after compression
+      makeup.gain.value    = 1.1   // slight, well below clipping
 
       source.connect(analyser)                 // VAD path — raw
       source.connect(comp)
       comp.connect(makeup)
-      makeup.connect(dest)                      // recording path — processed
+      makeup.connect(dest)                      // recording path — lightly processed
 
       sysAudio[0]?.addEventListener('ended', () => {
         if (stateRef.current !== 'idle') {
@@ -367,18 +382,26 @@ export default function FloatingBar() {
   const isProcessing = state === 'processing'
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground select-none overflow-hidden border border-white/10 rounded-lg">
+    <div className="flex flex-col h-screen max-h-screen select-none overflow-hidden rounded-[20px] border border-white/15 text-[#EAF0EA] shadow-[var(--sh-bar)]"
+      style={{
+        background: 'linear-gradient(180deg, rgba(48,34,26,.94), rgba(38,27,21,.96))',
+        backdropFilter: 'blur(26px) saturate(160%)',
+      }}
+    >
 
       {/* ── Drag strip ─────────────────────────────────────────── */}
       <div
-        className="shrink-0 h-5 w-full"
+        className="shrink-0 h-2.5 w-full"
         style={{ WebkitAppRegion: 'drag' }}
       />
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center gap-1 px-3 pb-0 border-b border-white/[0.06]">
+      <div
+        className="shrink-0 flex items-center gap-1.5 px-3.5 pb-2 border-b border-white/[0.08]"
+        style={{ WebkitAppRegion: 'drag' }}
+      >
         {/* Tabs */}
-        <div className="flex items-center gap-0.5 flex-1">
+        <div className="flex items-center gap-0.5 flex-1" style={{ WebkitAppRegion: 'no-drag' }}>
           <TabBtn
             active={activeTab === 'transcricao'}
             icon={<Mic size={11} />}
@@ -394,27 +417,28 @@ export default function FloatingBar() {
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-1.5 pb-2">
+        <div className="flex items-center gap-1.5 pb-2" style={{ WebkitAppRegion: 'no-drag' }}>
           <div className={[
-            'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all',
-            isListening ? 'bg-danger text-white' : 'bg-surface-2 text-muted',
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider transition-all',
+            isListening ? 'bg-danger/20 text-[#ffb3ad]' : 'bg-white/5 text-white/45',
           ].join(' ')}>
             {isListening
-              ? <><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />AO VIVO</>
+              ? <><span className="live-dot" />AO VIVO</>
               : isProcessing
               ? <><Loader2 size={9} className="animate-spin" />PROC...</>
-              : <><span className="w-1.5 h-1.5 rounded-full bg-muted/40" />OFF</>}
+              : <><span className="w-1.5 h-1.5 rounded-full bg-white/30" />OFF</>}
           </div>
           <button
             onClick={() => windowAPI.show('settings')}
-            className="w-5 h-5 flex items-center justify-center rounded text-muted/50 hover:text-foreground hover:bg-surface-2 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-white hover:bg-white/10 transition-colors"
             title="Configurações"
           >
             <Settings size={12} />
           </button>
           <button
             onClick={() => windowAPI.hide()}
-            className="w-5 h-5 flex items-center justify-center rounded text-muted/50 hover:text-danger hover:bg-danger/10 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-[#ffb3ad] hover:bg-white/10 transition-colors"
+            title="Esconder"
           >
             <X size={12} />
           </button>
@@ -445,46 +469,49 @@ export default function FloatingBar() {
       {isListening && !practiceSentence && <AudioMeter level={level} gate={MIN_PEAK} />}
 
       {/* ── Bottom bar ─────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-white/[0.06] px-3 py-2 flex items-center gap-2 bg-surface/60">
+      <div
+        className="shrink-0 border-t border-white/[0.08] px-3 py-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)_minmax(0,0.9fr)] gap-2 bg-white/[0.03]"
+        style={{ WebkitAppRegion: 'no-drag' }}
+      >
         <button
           onClick={toggle}
           disabled={isProcessing}
           className={[
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all',
+            'pill-button w-full min-w-0 px-2.5 py-2 text-[12px] transition-all overflow-hidden',
             isListening
-              ? 'bg-danger text-white hover:bg-danger/80'
+              ? 'bg-danger text-white hover:bg-danger/90'
               : isProcessing
-              ? 'bg-warning/20 text-warning cursor-default'
-              : 'bg-primary text-white hover:bg-primary/80',
+              ? 'bg-warning/20 text-[#f4cf93] cursor-default'
+              : 'bg-white/10 text-white hover:bg-white/15',
           ].join(' ')}
         >
           {isProcessing
-            ? <><Loader2 size={12} className="animate-spin" />Processando</>
+            ? <><Loader2 size={12} className="animate-spin shrink-0" /><span className="truncate">Processando</span></>
             : isListening
-            ? <><MicOff size={12} />Parar</>
-            : <><Mic size={12} />Escutar</>}
+            ? <><MicOff size={12} className="shrink-0" /><span className="truncate">Parar</span></>
+            : <><Mic size={12} className="shrink-0" /><span className="truncate">Escutar</span></>}
         </button>
 
         {/* Auto-practice toggle */}
         <button
           onClick={toggleAuto}
           className={[
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all border',
+            'pill-button w-full min-w-0 px-2.5 py-2 text-[12px] transition-all border overflow-hidden',
             autoMode
-              ? 'bg-warning/20 text-warning border-warning/40'
-              : 'bg-surface-2 text-muted border-white/[0.06] hover:text-foreground',
+              ? 'bg-warning/20 text-[#f4cf93] border-warning/40'
+              : 'bg-white/5 text-white/65 border-white/[0.10] hover:text-white hover:bg-white/10',
           ].join(' ')}
           title="Pausa o vídeo a cada frase para você treinar"
         >
-          <Zap size={12} className={autoMode ? 'fill-warning' : ''} />
-          Auto-treino {autoMode ? 'ON' : 'OFF'}
+          <Zap size={12} className={['shrink-0', autoMode ? 'fill-warning' : ''].join(' ')} />
+          <span className="truncate">Auto {autoMode ? 'ON' : 'OFF'}</span>
         </button>
 
         <button
           onClick={() => windowAPI.show('tutor-board')}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-surface-2 text-muted hover:text-foreground hover:bg-surface transition-all border border-white/[0.06]"
+          className="pill-button w-full min-w-0 px-2.5 py-2 text-[12px] bg-white/10 text-white hover:bg-white/15 transition-all border border-white/[0.10] overflow-hidden"
         >
-          Analisar
+          <span className="truncate">Analisar</span>
         </button>
       </div>
     </div>
@@ -497,17 +524,17 @@ function AudioMeter({ level, gate }: { level: number; gate: number }) {
   const gatePct  = Math.min(100, (gate / 80) * 100)
   const overGate = level >= gate
   return (
-    <div className="shrink-0 px-3 py-1.5 border-t border-white/[0.04] flex items-center gap-2">
-      <span className="text-[9px] text-muted/40 uppercase tracking-wider w-8">Nível</span>
-      <div className="relative flex-1 h-2 rounded-full bg-surface-2 overflow-hidden">
+    <div className="shrink-0 px-3.5 py-2 border-t border-white/[0.05] flex items-center gap-2">
+      <span className="text-[9px] text-white/35 uppercase tracking-wider w-8">Nível</span>
+      <div className="relative flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
         <div
-          className={['h-full transition-all duration-75', overGate ? 'bg-success' : 'bg-muted/40'].join(' ')}
+          className={['h-full transition-all duration-75', overGate ? 'bg-success' : 'bg-white/35'].join(' ')}
           style={{ width: `${pct}%` }}
         />
         {/* gate marker */}
         <div className="absolute top-0 bottom-0 w-px bg-warning" style={{ left: `${gatePct}%` }} title="Limiar de fala" />
       </div>
-      <span className="text-[9px] font-mono text-muted/50 w-6 text-right">{level}</span>
+      <span className="text-[9px] font-mono text-white/45 w-6 text-right">{level}</span>
     </div>
   )
 }
@@ -549,20 +576,20 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
   const busy      = state === 'transcribing'
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 flex flex-col">
-      <div className="flex items-center gap-1.5 mb-2 text-warning">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col">
+      <div className="flex items-center gap-1.5 mb-2 text-[#f4cf93]">
         <Zap size={12} className="fill-warning" />
         <span className="text-[10px] font-semibold uppercase tracking-wider">Repita a frase</span>
       </div>
 
       {/* Target sentence */}
-      <div className="rounded-lg bg-surface-2/60 border border-white/[0.06] px-3 py-2.5 mb-2">
-        <p className="text-sm text-foreground leading-relaxed">{sentence}</p>
+      <div className="rounded-xl bg-white/[0.05] border border-white/[0.08] px-3.5 py-3 mb-2.5">
+        <p className="text-[18px] font-semibold text-white leading-relaxed break-words">{sentence}</p>
         <div className="mt-1.5 flex items-center gap-3">
           {originalAudioUrl && (
             <button
               onClick={() => playClip(originalAudioUrl)}
-              className="flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary transition-colors"
+              className="flex items-center gap-1 text-[11px] text-white/65 hover:text-white transition-colors"
               title="Ouvir o áudio original da cena"
             >
               <Volume2 size={11} /> Original
@@ -570,7 +597,7 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
           )}
           <button
             onClick={() => speakViaTts(sentence, lang)}
-            className="flex items-center gap-1 text-[11px] text-muted hover:text-primary transition-colors"
+            className="flex items-center gap-1 text-[11px] text-white/55 hover:text-white transition-colors"
             title="Ouvir voz sintetizada (clara/lenta)"
           >
             <Volume2 size={11} /> TTS
@@ -584,12 +611,12 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
           <div className="flex items-center gap-2 mb-1.5">
             <span className={[
               'text-sm font-bold',
-              result.score >= 80 ? 'text-success' : result.score >= 50 ? 'text-warning' : 'text-danger',
+              result.score >= 80 ? 'text-success' : result.score >= 50 ? 'text-[#f4cf93]' : 'text-[#ffb3ad]',
             ].join(' ')}>{result.score}%</span>
-            <span className="text-xs text-muted">de precisão</span>
+            <span className="text-xs text-white/50">de precisão</span>
             <button
               onClick={() => playClip(result.audioUrl)}
-              className="ml-auto flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary transition-colors"
+              className="ml-auto flex items-center gap-1 text-[11px] text-white/65 hover:text-white transition-colors"
               title="Ouvir minha gravação"
             >
               <Volume2 size={11} /> Minha voz
@@ -598,24 +625,24 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
           <DiffView diff={result.diff} />
         </>
       ) : (
-        <p className="text-xs text-muted/70 italic">
-          {counting ? `Gravando em ${countdown}...` : recording ? '🔴 Gravando — fale agora' : busy ? 'Avaliando...' : 'Clique em Gravar quando estiver pronto.'}
+        <p className="text-xs text-white/55 italic mb-2">
+          {counting ? `Gravando em ${countdown}...` : recording ? 'Gravando - fale agora' : busy ? 'Avaliando...' : 'Clique em Gravar quando estiver pronto.'}
         </p>
       )}
 
       {/* Controls */}
-      <div className="mt-auto flex items-center gap-2 pt-3">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
         {recording ? (
-          <button onClick={stop} className="flex-1 bg-danger text-white py-2 rounded-md text-xs font-semibold hover:bg-danger/80">
+          <button onClick={stop} className="flex-1 bg-danger text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-danger/90">
             Parar
           </button>
         ) : (
-          <button onClick={run} disabled={counting || busy} className="flex-1 bg-warning/20 text-warning border border-warning/40 py-2 rounded-md text-xs font-semibold hover:bg-warning/30 disabled:opacity-40">
+          <button onClick={run} disabled={counting || busy} className="flex-1 bg-warning/20 text-[#f4cf93] border border-warning/40 py-2.5 rounded-xl text-xs font-semibold hover:bg-warning/30 disabled:opacity-40">
             <Mic size={12} className="inline mr-1" />{result ? 'Repetir' : 'Gravar'}
           </button>
         )}
-        <button onClick={finish} className="flex-1 bg-primary text-white py-2 rounded-md text-xs font-semibold hover:bg-primary/80">
-          {result ? 'Continuar ▶' : 'Pular ▶'}
+        <button onClick={finish} className="flex-1 bg-white/10 text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-white/15">
+          {result ? 'Continuar' : 'Pular'}
         </button>
       </div>
     </div>
@@ -635,10 +662,10 @@ function TabBtn({ active, icon, label, onClick }: { active?: boolean; icon: Reac
     <button
       onClick={onClick}
       className={[
-        'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors',
+        'flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-[11px] transition-colors',
         active
-          ? 'border-primary text-primary'
-          : 'border-transparent text-muted hover:text-foreground',
+          ? 'bg-white/12 text-white'
+          : 'text-white/62 hover:text-white hover:bg-white/[0.06]',
       ].join(' ')}
     >
       {icon}{label}
@@ -659,34 +686,34 @@ function TranscriptList({ lines, currentTranscript, error }: {
   }, [lines, currentTranscript])
 
   return (
-    <div className="flex-1 overflow-y-auto py-2 px-3 space-y-1.5">
+    <div className="flex-1 min-h-0 overflow-y-auto py-3 px-3.5 space-y-2">
       {error && (
-        <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-[#ffb3ad]">
           {error}
         </div>
       )}
 
       {lines.length === 0 && !currentTranscript && !error && (
-        <div className="flex flex-col items-center justify-center h-full gap-2 text-muted/40 pt-16">
+        <div className="flex flex-col items-center justify-center h-full gap-2 text-white/40 pt-16">
           <Mic size={24} className="opacity-30" />
-          <p className="text-xs">Nenhum texto capturado — continue falando...</p>
+          <p className="text-xs">Aperte Escutar e dê play no vídeo.</p>
         </div>
       )}
 
       {lines.map((line, i) => (
         <div
           key={i}
-          className="rounded-lg bg-surface-2/60 border border-white/[0.05] px-3 py-2.5"
+          className="fade-up rounded-xl bg-white/[0.05] border border-white/[0.06] px-3 py-2.5"
         >
-          <p className="text-[10px] text-muted/50 uppercase tracking-wider mb-1 font-medium">Áudio</p>
-          <p className="text-sm text-foreground leading-relaxed">{line}</p>
+          <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1 font-semibold">Áudio</p>
+          <p className="text-sm text-white/90 leading-relaxed">{line}</p>
         </div>
       ))}
 
       {currentTranscript && (
-        <div className="rounded-lg border border-white/[0.04] px-3 py-2.5 opacity-50">
-          <p className="text-[10px] text-muted/40 uppercase tracking-wider mb-1 font-medium">Capturando...</p>
-          <p className="text-sm text-foreground/60 leading-relaxed">{currentTranscript}</p>
+        <div className="rounded-xl border border-primary/35 bg-primary/10 px-3 py-2.5">
+          <p className="text-[10px] text-white/45 uppercase tracking-wider mb-1 font-semibold">Capturando...</p>
+          <p className="text-sm text-white/70 leading-relaxed">{currentTranscript}</p>
         </div>
       )}
 
@@ -705,7 +732,7 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
 
   if (attempts.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted/40">
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 text-white/40">
         <User size={24} className="opacity-30" />
         <p className="text-xs px-6 text-center">Suas falas de prática aparecem aqui.</p>
         <p className="text-[10px] opacity-60 px-6 text-center">Use "Praticar" no Tutor Board para gravar e comparar.</p>
@@ -714,16 +741,16 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-2 px-3 space-y-2">
+    <div className="flex-1 min-h-0 overflow-y-auto py-3 px-3.5 space-y-2">
       {attempts.map((a, i) => (
-        <div key={i} className="rounded-lg bg-surface-2/60 border border-white/[0.05] px-3 py-2.5">
+        <div key={i} className="rounded-xl bg-white/[0.05] border border-white/[0.06] px-3 py-2.5">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted/50 uppercase tracking-wider font-medium">Tentativa #{i + 1}</span>
+              <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Tentativa #{i + 1}</span>
               {a.audioUrl && (
                 <button
                   onClick={() => playClip(a.audioUrl)}
-                  className="flex items-center gap-1 text-[10px] text-primary/80 hover:text-primary transition-colors"
+                  className="flex items-center gap-1 text-[10px] text-white/65 hover:text-white transition-colors"
                   title="Ouvir minha gravação"
                 >
                   <Volume2 size={11} /> Ouvir
@@ -732,17 +759,17 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
             </div>
             <span className={[
               'text-xs font-bold',
-              a.score >= 80 ? 'text-success' : a.score >= 50 ? 'text-warning' : 'text-danger',
+              a.score >= 80 ? 'text-success' : a.score >= 50 ? 'text-[#f4cf93]' : 'text-[#ffb3ad]',
             ].join(' ')}>{a.score}%</span>
           </div>
 
           {/* Original */}
-          <p className="text-[10px] text-muted/40 mb-0.5">Original</p>
-          <p className="text-xs text-foreground/70 mb-1.5 leading-relaxed">{a.original}</p>
+          <p className="text-[10px] text-white/35 mb-0.5">Original</p>
+          <p className="text-xs text-white/70 mb-1.5 leading-relaxed">{a.original}</p>
 
           {/* Full raw speech (nothing hidden) */}
-          <p className="text-[10px] text-muted/40 mb-0.5">Você falou</p>
-          <p className="text-xs text-foreground/90 mb-1.5 leading-relaxed">{a.spoken}</p>
+          <p className="text-[10px] text-white/35 mb-0.5">Você falou</p>
+          <p className="text-xs text-white/90 mb-1.5 leading-relaxed">{a.spoken}</p>
 
           {/* Word-by-word diff (ok / missing / extra) */}
           <DiffView diff={a.diff} />

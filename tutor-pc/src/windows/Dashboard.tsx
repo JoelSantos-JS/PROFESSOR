@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, BookOpen, Mic, Settings, Zap, AlertTriangle } from 'lucide-react'
+import { Activity, AlertTriangle, BookOpen, Brain, Flame, Home, Mic, Settings, Zap } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
 import { windowAPI, storeAPI } from '../services/electron'
 import { languageLabel } from '../lib/languages'
@@ -12,141 +12,163 @@ export default function Dashboard() {
     storeAPI.stats().then(setStats).catch(console.error)
   }, [])
 
+  const totalDue = stats?.dueCount ?? 0
   const cards = [
-    { label: 'Sessões',   value: stats?.sessionCount ?? 0,        icon: Activity },
-    { label: 'Frases',    value: stats?.phraseCount ?? 0,         icon: BookOpen },
-    { label: 'Sequência', value: `${stats?.streak ?? 0} dias`,    icon: Zap },
+    { label: 'Sessões', value: stats?.sessionCount ?? 0, icon: Activity },
+    { label: 'Frases', value: stats?.phraseCount ?? 0, icon: BookOpen },
+    { label: 'Sequência', value: stats?.streak ?? 0, suffix: 'dias', icon: Flame, accent: true },
   ]
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
-      <TitleBar title="PROFESSOR" />
+    <div className="flex flex-col h-screen app-paper text-foreground">
+      <TitleBar title="Início" />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-14 flex flex-col items-center py-3 gap-1 border-r border-border shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center mb-3 shrink-0">
-            <span className="text-xs font-bold text-white">T</span>
+        <aside className="w-[62px] shrink-0 flex flex-col items-center gap-1.5 py-3.5 bg-surface-2 border-r border-border">
+          <div className="w-[38px] h-[38px] rounded-xl bg-primary text-white grid place-items-center display-title text-[21px] mb-2">
+            P
           </div>
 
-          <NavButton icon={Activity} label="Início" active />
-          <NavButton icon={BookOpen} label="Revisão" onClick={() => windowAPI.show('review')} />
-          <NavButton icon={Mic} label="Tutor Board" onClick={() => windowAPI.show('tutor-board')} />
+          <NavButton icon={Home} label="Início" active />
+          <NavButton icon={Brain} label="Revisão" onClick={() => windowAPI.show('review')} />
+          <NavButton icon={BookOpen} label="Tutor Board" onClick={() => windowAPI.show('tutor-board')} />
+          <NavButton icon={Mic} label="Barra flutuante" onClick={() => windowAPI.show('floating-bar')} />
 
           <div className="mt-auto">
             <NavButton icon={Settings} label="Configurações" onClick={() => windowAPI.show('settings')} />
           </div>
         </aside>
 
-        {/* Main */}
-        <main className="flex-1 overflow-y-auto p-6">
-          <h1 className="text-xl font-semibold text-foreground mb-1">Bem-vindo!</h1>
-          <p className="text-sm text-muted mb-6">Pronto para praticar hoje?</p>
+        <main className="flex-1 overflow-y-auto px-8 py-7">
+          <div className="mb-6">
+            <h1 className="display-title text-[30px] leading-tight text-foreground">Bem-vindo de volta</h1>
+            <p className="text-[15px] text-muted mt-1">
+              Pronto para praticar hoje? Você tem{' '}
+              <b className="text-primary">{totalDue}</b>{' '}
+              {totalDue === 1 ? 'frase' : 'frases'} para revisar.
+            </p>
+          </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            {cards.map(({ label, value, icon: Icon }) => (
-              <div key={label} className="bg-surface rounded-xl p-4 border border-border">
-                <Icon size={16} className="text-muted mb-2" />
-                <div className="text-2xl font-bold text-foreground">{value}</div>
-                <div className="text-xs text-muted mt-0.5">{label}</div>
+          <div className="grid grid-cols-3 gap-3.5 mb-7">
+            {cards.map(({ label, value, suffix, icon: Icon, accent }) => (
+              <div key={label} className="paper-card px-5 py-4">
+                <div className={['display-title text-[34px] leading-none', accent ? 'text-primary' : 'text-foreground'].join(' ')}>
+                  {value}
+                  {suffix && <span className="ml-1 text-base font-semibold font-sans text-muted">{suffix}</span>}
+                </div>
+                <div className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-muted">
+                  <Icon size={14} />
+                  {label}
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Languages being learned — click one to review just that deck */}
           {stats && stats.languages.length > 0 && (
-            <div className="mb-6">
-              <span className="text-xs text-muted">Revisar por idioma:</span>
-              <div className="flex flex-wrap items-center gap-2 mt-2">
-                {stats.languages.map(l => (
-                  <button
-                    key={l.lang}
-                    onClick={() => windowAPI.openReview(l.lang)}
-                    disabled={l.due === 0}
-                    className={[
-                      'flex items-center gap-1.5 text-xs rounded-full px-2.5 py-1 border transition-colors',
-                      l.due > 0
-                        ? 'bg-surface border-border hover:border-primary/50 hover:bg-primary/10 cursor-pointer'
-                        : 'bg-surface/50 border-border/50 text-muted/50 cursor-default',
-                    ].join(' ')}
-                    title={l.due > 0 ? `Revisar ${l.due} de ${languageLabel(l.lang)}` : 'Nada a revisar agora'}
-                  >
-                    {languageLabel(l.lang)}
-                    <span className="text-muted/60">{l.total}</span>
-                    {l.due > 0 && <span className="text-warning">· {l.due} a revisar</span>}
-                  </button>
-                ))}
+            <section className="mb-7">
+              <h2 className="display-title text-[19px] mb-3.5">Revisar por idioma</h2>
+              <div className="flex flex-wrap gap-3">
+                {stats.languages.map(l => {
+                  const active = l.due > 0
+                  return (
+                    <button
+                      key={l.lang}
+                      onClick={() => active && windowAPI.openReview(l.lang)}
+                      disabled={!active}
+                      className={[
+                        'paper-card paper-card-hover min-w-[188px] flex items-center gap-3 px-4 py-3 text-left',
+                        active ? 'cursor-pointer' : 'opacity-55 cursor-default hover:transform-none',
+                      ].join(' ')}
+                      title={active ? `Revisar ${l.due} de ${languageLabel(l.lang)}` : 'Nada a revisar agora'}
+                    >
+                      <span className="text-2xl">{languageFlag(l.lang)}</span>
+                      <span className="min-w-0">
+                        <span className="block text-[15px] font-bold text-foreground">{languageLabel(l.lang)}</span>
+                        <span className="block text-[12.5px] text-muted">{l.total} frases</span>
+                      </span>
+                      <span className={[
+                        'ml-auto rounded-full px-2.5 py-1 text-xs font-bold',
+                        active ? 'bg-primary text-white' : 'bg-border text-muted',
+                      ].join(' ')}>
+                        {active ? `${l.due} a revisar` : 'em dia'}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-            </div>
+              <button
+                onClick={() => windowAPI.openReview()}
+                className="pill-button pill-primary mt-4 px-5 py-2.5 text-sm"
+              >
+                <Brain size={16} />
+                Revisar tudo ({totalDue} pendentes)
+              </button>
+            </section>
           )}
 
-          {/* Review CTA (all languages) */}
-          <button
-            onClick={() => windowAPI.openReview()}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:bg-primary/80 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors mb-8"
-          >
-            <BookOpen size={16} />
-            Revisar {stats?.dueCount ? `tudo (${stats.dueCount} pendentes)` : 'vocabulário'}
-          </button>
-
-          {/* Words I mispronounce most */}
-          {stats && stats.topMistakes.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-sm font-medium text-foreground mb-3 flex items-center gap-1.5">
-                <AlertTriangle size={14} className="text-warning" />
+          <div className="grid grid-cols-2 gap-5.5">
+            <section className="paper-card px-5 py-4">
+              <h2 className="display-title text-[19px] mb-3 flex items-center gap-2">
+                <AlertTriangle size={17} className="text-warning" />
                 Palavras que mais erro
               </h2>
-              <div className="flex flex-wrap gap-2">
-                {stats.topMistakes.map((m, i) => (
-                  <span key={i} className="flex items-center gap-1.5 bg-surface border border-border rounded-lg px-3 py-1.5 text-sm">
-                    <span className="text-foreground">{m.word}</span>
-                    <span className="text-xs text-danger font-mono">{m.count}×</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+              {stats && stats.topMistakes.length > 0 ? (
+                <div>
+                  {stats.topMistakes.map((m, i) => (
+                    <div key={i} className="flex items-center gap-2.5 py-2.5 border-b border-border last:border-b-0">
+                      <span className="text-[16px] font-semibold display-title text-foreground">{m.word}</span>
+                      <span className="ml-auto rounded-full bg-danger/10 px-2.5 py-0.5 text-[13px] font-bold text-danger">
+                        {m.count}x
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted py-4">As palavras recorrentes aparecem aqui depois das primeiras práticas.</p>
+              )}
+            </section>
 
-          {/* Shortcuts */}
-          <div className="mb-6">
-            <h2 className="text-sm font-medium text-foreground mb-3">Atalhos rápidos</h2>
-            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <section className="paper-card px-5 py-4">
+              <h2 className="display-title text-[19px] mb-3">Sessões recentes</h2>
+              {stats && stats.recentSessions.length > 0 ? (
+                <div>
+                  {stats.recentSessions.map((s, i) => (
+                    <div key={s.id} className="flex items-center gap-3 py-2.5 border-b border-border last:border-b-0">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {new Date(s.startedAt).toLocaleString('pt-BR')}
+                        </div>
+                        <div className="text-xs text-muted">sessão capturada</div>
+                      </div>
+                      <span className="ml-auto text-[12.5px] font-bold text-foreground">{s.lineCount} frases</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-5 text-sm text-muted">
+                  Use <kbd className="rounded bg-surface-2 px-1.5 py-0.5 text-xs font-mono text-foreground">Ctrl+Alt+L</kbd> para começar.
+                </div>
+              )}
+            </section>
+          </div>
+
+          <section className="paper-card mt-5 px-5 py-4">
+            <h2 className="display-title text-[19px] mb-3">Atalhos rápidos</h2>
+            <div className="grid grid-cols-3 gap-3">
               {[
-                { key: 'Ctrl+Alt+L', desc: 'Mostrar/esconder barra flutuante' },
-                { key: 'Ctrl+Alt+S', desc: 'Abrir configurações' },
-                { key: 'Ctrl+Alt+B', desc: 'Abrir Tutor Board' },
-              ].map(({ key, desc }, i, arr) => (
-                <div key={key} className={['flex items-center justify-between px-4 py-2.5 text-sm', i < arr.length - 1 ? 'border-b border-border' : ''].join(' ')}>
-                  <span className="text-muted">{desc}</span>
-                  <kbd className="px-2 py-0.5 bg-surface-2 text-foreground rounded text-xs font-mono">{key}</kbd>
+                { key: 'Ctrl+Alt+L', desc: 'Mostrar/esconder barra' },
+                { key: 'Ctrl+Alt+S', desc: 'Configurações' },
+                { key: 'Ctrl+Alt+B', desc: 'Tutor Board' },
+              ].map(({ key, desc }) => (
+                <div key={key} className="rounded-xl bg-surface-2 border border-border px-3 py-2.5">
+                  <div className="text-xs text-muted">{desc}</div>
+                  <kbd className="mt-1 inline-block rounded-md bg-white px-2 py-0.5 text-xs font-mono text-foreground border border-border">
+                    {key}
+                  </kbd>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Recent sessions */}
-          <div>
-            <h2 className="text-sm font-medium text-foreground mb-3">Sessões recentes</h2>
-            <div className="bg-surface rounded-xl border border-border overflow-hidden">
-              {stats && stats.recentSessions.length > 0 ? (
-                stats.recentSessions.map((s, i, arr) => (
-                  <div key={s.id} className={['flex items-center justify-between px-4 py-2.5 text-sm', i < arr.length - 1 ? 'border-b border-border' : ''].join(' ')}>
-                    <span className="text-muted">{new Date(s.startedAt).toLocaleString('pt-BR')}</span>
-                    <span className="text-foreground">{s.lineCount} frases</span>
-                  </div>
-                ))
-              ) : (
-                <div className="p-8 text-center">
-                  <p className="text-sm text-muted">
-                    Nenhuma sessão ainda. Use{' '}
-                    <kbd className="px-1.5 py-0.5 bg-surface-2 rounded text-xs font-mono">Ctrl+Alt+L</kbd>{' '}
-                    para começar.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          </section>
         </main>
       </div>
     </div>
@@ -164,11 +186,22 @@ function NavButton({ icon: Icon, label, active = false, onClick }: {
       title={label}
       onClick={onClick}
       className={[
-        'w-9 h-9 rounded-lg flex items-center justify-center transition-colors',
-        active ? 'bg-primary/20 text-primary' : 'text-muted hover:text-foreground hover:bg-surface',
+        'w-[42px] h-[42px] rounded-xl grid place-items-center transition-colors',
+        active ? 'bg-primary/15 text-primary' : 'text-muted hover:text-foreground hover:bg-border',
       ].join(' ')}
     >
-      <Icon size={18} />
+      <Icon size={20} />
     </button>
   )
+}
+
+function languageFlag(lang: string) {
+  if (lang.startsWith('en')) return '🇬🇧'
+  if (lang.startsWith('ko')) return '🇰🇷'
+  if (lang.startsWith('es')) return '🇪🇸'
+  if (lang.startsWith('fr')) return '🇫🇷'
+  if (lang.startsWith('de')) return '🇩🇪'
+  if (lang.startsWith('ja')) return '🇯🇵'
+  if (lang.startsWith('zh')) return '🇨🇳'
+  return '🌐'
 }

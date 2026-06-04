@@ -18,6 +18,15 @@ export type MonitorAction =
 
 export const INITIAL_MONITOR: MonitorState = { phase: 'watching', current: null, queue: [] }
 
+// Auto-practice is meant for single spoken lines. Very long captures are usually
+// run-on speech / background chatter over-captured by the VAD — too unwieldy to
+// repeat, so they're transcribed but skipped for practice.
+export const MAX_PRACTICE_WORDS = 24
+
+function tooLongToPractice(text: string): boolean {
+  return text.split(/\s+/).filter(Boolean).length > MAX_PRACTICE_WORDS
+}
+
 /**
  * A sentence was just transcribed.
  * - auto OFF            → no-op.
@@ -31,6 +40,8 @@ export function onSentence(
 ): { state: MonitorState; action: MonitorAction } {
   const text = sentence.trim()
   if (!autoMode || !text) return { state, action: 'none' }
+  // Skip run-ons / background chatter — too long to be a useful practice line.
+  if (tooLongToPractice(text)) return { state, action: 'none' }
 
   if (state.phase === 'watching') {
     return {

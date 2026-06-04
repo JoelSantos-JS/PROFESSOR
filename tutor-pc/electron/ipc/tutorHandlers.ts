@@ -16,6 +16,7 @@ export function setupTutorHandlers(windowManager: WindowManager): void {
   // Called by FloatingBar after each successful transcription
   ipcMain.handle('tutor:analyze', async (_e, transcript: string, detectedLanguage: string, audioUrl?: string, cues?: unknown) => {
     if (!transcript?.trim()) return { ok: true }
+    console.log(`[tutor] analyze "${transcript.slice(0, 30)}..." cues=${Array.isArray(cues) ? cues.length : 'none'}`)
 
     // Open the board immediately on ANY captured sentence — don't wait for (or
     // depend on) the AI analysis, which may be slow or fail.

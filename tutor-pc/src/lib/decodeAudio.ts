@@ -18,24 +18,34 @@ function getCtx(): AudioContext {
   return sharedCtx
 }
 
+function downmix(audio: AudioBuffer): DecodedAudio {
+  const channels = audio.numberOfChannels
+  const len = audio.length
+  const mono = new Float32Array(len)
+  for (let c = 0; c < channels; c++) {
+    const data = audio.getChannelData(c)
+    for (let i = 0; i < len; i++) mono[i] += data[i] / channels
+  }
+  return { samples: mono, sampleRate: audio.sampleRate }
+}
+
 export async function decodeToMono(dataUrl: string): Promise<DecodedAudio | null> {
   if (!dataUrl) return null
   try {
-    const resp = await fetch(dataUrl)
-    const arr = await resp.arrayBuffer()
-    // decodeAudioData detaches the buffer; slice() gives it a private copy.
-    const audio = await getCtx().decodeAudioData(arr.slice(0))
-
-    const channels = audio.numberOfChannels
-    const len = audio.length
-    const mono = new Float32Array(len)
-    for (let c = 0; c < channels; c++) {
-      const data = audio.getChannelData(c)
-      for (let i = 0; i < len; i++) mono[i] += data[i] / channels
-    }
-    return { samples: mono, sampleRate: audio.sampleRate }
+    const arr = await (await fetch(dataUrl)).arrayBuffer()
+    return downmix(await getCtx().decodeAudioData(arr.slice(0)))
   } catch (err) {
-    console.error('[pitch] decode failed:', (err as Error)?.message)
+    console.error('[audio] decode (url) failed:', (err as Error)?.message)
+    return null
+  }
+}
+
+/** Decode raw audio bytes (e.g. a recorded blob) to mono samples. */
+export async function decodeBufferToMono(buffer: ArrayBuffer): Promise<DecodedAudio | null> {
+  try {
+    return downmix(await getCtx().decodeAudioData(buffer.slice(0)))
+  } catch (err) {
+    console.error('[audio] decode (buffer) failed:', (err as Error)?.message)
     return null
   }
 }

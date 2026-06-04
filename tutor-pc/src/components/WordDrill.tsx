@@ -1,6 +1,6 @@
 import { Volume2, AlertTriangle } from 'lucide-react'
 import { ttsAPI } from '../services/electron'
-import { playClip } from '../lib/playClip'
+import { playClip, playSlice } from '../lib/playClip'
 import { findWordCue } from '../lib/tts'
 import { missingWords } from '../lib/text'
 import type { SessionAttempt } from '../types'
@@ -39,7 +39,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
               <span className="text-xs font-medium text-foreground">{word}</span>
               {cue && attempt.originalAudioUrl && (
                 <button
-                  onClick={() => playClip(attempt.originalAudioUrl, { startMs: cue.start, endMs: cue.end })}
+                  onClick={() => attempt.originalAudioUrl && playSlice(attempt.originalAudioUrl, cue.start, cue.end)}
                   className="flex items-center justify-center w-5 h-5 rounded text-success hover:bg-success/15 transition-colors"
                   title="Ouvir a pronúncia original (voz da cena)"
                 >

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
     get: (id: string) => ipcRenderer.invoke('credentials:get', id),
     remove: (id: string) => ipcRenderer.invoke('credentials:remove', id),
     debug: () => ipcRenderer.invoke('credentials:debug'),
+    test: (id: string) => ipcRenderer.invoke('credentials:test', id),
   },
   audio: {
     getSources: () => ipcRenderer.invoke('audio:get-sources'),

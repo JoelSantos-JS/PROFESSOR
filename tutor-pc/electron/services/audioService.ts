@@ -1,8 +1,9 @@
-import { CredentialsService } from './credentialsService'
+import { CredentialsService, type ProviderId } from './credentialsService'
 import { SettingsService } from './settingsService'
 import { shouldRejectTranscript, type WhisperSegment } from '../lib/transcriptFilter.js'
 import { normalizeLang } from '../lib/langNormalize.js'
-import { wordsToCues, type WhisperWord, type Cue } from '../lib/whisperWords.js'
+import { cuesFromWhisperResponse, extractWhisperWords, type WhisperWord, type Cue, type WhisperTimedSegment } from '../lib/whisperWords.js'
+import { providerFetch } from '../lib/providerFetch.js'
 
 export interface TranscribeResult {
   text: string
@@ -13,8 +14,32 @@ export interface TranscribeResult {
 interface WhisperResponse {
   text: string
   language?: string
-  segments?: WhisperSegment[]
+  segments?: Array<WhisperSegment & WhisperTimedSegment>
   words?: WhisperWord[]
+}
+
+function whisperShape(json: WhisperResponse): string {
+  const segments = Array.isArray(json.segments) ? json.segments : []
+  const segmentWords = segments.reduce((sum, segment) => sum + (Array.isArray(segment.words) ? segment.words.length : 0), 0)
+  const firstSegmentKeys = segments[0] ? Object.keys(segments[0]).sort().join(',') : ''
+  return [
+    `keys=${Object.keys(json).sort().join(',')}`,
+    `topWords=${Array.isArray(json.words) ? json.words.length : 0}`,
+    `segments=${segments.length}`,
+    `segmentWords=${segmentWords}`,
+    firstSegmentKeys ? `firstSegmentKeys=${firstSegmentKeys}` : '',
+  ].filter(Boolean).join(' ')
+}
+
+function formatProviderError(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; status?: string } }
+    const status = parsed.error?.status
+    const message = parsed.error?.message
+    return [status, message].filter(Boolean).join(': ') || body
+  } catch {
+    return body
+  }
 }
 
 export class AudioService {
@@ -26,8 +51,18 @@ export class AudioService {
   // `hint` biases Whisper toward expected words (used for single-word practice
   // where short, context-free audio is otherwise easy to mis-transcribe).
   async transcribe(audioBuffer: ArrayBuffer | Buffer, hint?: string): Promise<TranscribeResult> {
-    const { activeTranscriptionProvider } = this.settings.getAll()
-    const apiKey = this.credentials.get(activeTranscriptionProvider)
+    const settings = this.settings.getAll()
+    let activeTranscriptionProvider = settings.activeTranscriptionProvider
+    let apiKey = this.credentials.get(activeTranscriptionProvider)
+
+    if (activeTranscriptionProvider === 'gemini') {
+      const groqKey = this.credentials.get('groq')
+      if (groqKey) {
+        activeTranscriptionProvider = 'groq' as ProviderId
+        apiKey = groqKey
+        console.log('[audio] transcription override: gemini -> groq for word timestamps')
+      }
+    }
 
     if (!apiKey) {
       throw new Error(`Nenhuma chave configurada para "${activeTranscriptionProvider}". Abra Configurações.`)
@@ -37,25 +72,45 @@ export class AudioService {
       ? Buffer.from(new Uint8Array(audioBuffer))
       : audioBuffer
 
+    console.log(`[audio] provider=${activeTranscriptionProvider} received format=${this.blobMeta(buf).name} bytes=${buf.length}`)
+    const spokenLanguage = normalizeLang(
+      settings.contentLanguage && settings.contentLanguage !== 'auto'
+        ? settings.contentLanguage
+        : settings.targetLanguage,
+    )
+
     switch (activeTranscriptionProvider) {
-      case 'openai':  return this.whisperOpenAI(buf, apiKey, hint)
-      case 'groq':    return this.whisperGroq(buf, apiKey, hint)
+      case 'openai':  return this.whisperOpenAI(buf, apiKey, hint, spokenLanguage)
+      case 'groq':    return this.whisperGroq(buf, apiKey, hint, spokenLanguage)
       case 'gemini':  return this.geminiAudio(buf, apiKey)
       default:
         throw new Error(`Provider "${activeTranscriptionProvider}" não suporta transcrição.`)
     }
   }
 
+  /** Pick the right filename/mime from the buffer's magic bytes (WAV vs WebM). */
+  private blobMeta(buf: Buffer): { type: string; name: string } {
+    // "RIFF" → WAV
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) {
+      return { type: 'audio/wav', name: 'audio.wav' }
+    }
+    return { type: 'audio/webm', name: 'audio.webm' }
+  }
+
   // Whisper verbose_json returns detected language automatically
-  private async whisperOpenAI(buf: Buffer, apiKey: string, hint?: string): Promise<TranscribeResult> {
+  private async whisperOpenAI(buf: Buffer, apiKey: string, hint?: string, spokenLanguage?: string): Promise<TranscribeResult> {
     const form = new FormData()
-    form.append('file', new Blob([buf], { type: 'audio/webm' }), 'audio.webm')
+    const meta = this.blobMeta(buf)
+    form.append('file', new Blob([buf], { type: meta.type }), meta.name)
     form.append('model', 'whisper-1')
     form.append('response_format', 'verbose_json')
+    form.append('timestamp_granularities[]', 'segment')
     form.append('timestamp_granularities[]', 'word')
+    form.append('temperature', '0')
+    if (spokenLanguage && spokenLanguage !== 'auto') form.append('language', spokenLanguage)
     if (hint) form.append('prompt', hint)
 
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const res = await providerFetch('OpenAI transcription', 'https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
       body: form,
@@ -65,34 +120,43 @@ export class AudioService {
     if (shouldRejectTranscript(json.text ?? '', json.segments ?? [])) {
       return { text: '', language: normalizeLang(json.language) || 'auto' }
     }
-    return { text: json.text.trim(), language: normalizeLang(json.language) || 'auto', cues: wordsToCues(json.words) }
+    return { text: json.text.trim(), language: normalizeLang(json.language) || 'auto', cues: cuesFromWhisperResponse(json) }
   }
 
-  private async whisperGroq(buf: Buffer, apiKey: string, hint?: string): Promise<TranscribeResult> {
+  private async whisperGroq(buf: Buffer, apiKey: string, hint?: string, spokenLanguage?: string): Promise<TranscribeResult> {
     const form = new FormData()
-    form.append('file', new Blob([buf], { type: 'audio/webm' }), 'audio.webm')
+    const meta = this.blobMeta(buf)
+    form.append('file', new Blob([buf], { type: meta.type }), meta.name)
     form.append('model', 'whisper-large-v3')
     form.append('response_format', 'verbose_json')
+    form.append('timestamp_granularities[]', 'segment')
     form.append('timestamp_granularities[]', 'word')
+    form.append('temperature', '0')
+    if (spokenLanguage && spokenLanguage !== 'auto') form.append('language', spokenLanguage)
     if (hint) form.append('prompt', hint)
+    console.log(`[audio] groq request model=whisper-large-v3 file=${meta.name} language=${spokenLanguage || 'auto'} timestamps=segment,word hint=${Boolean(hint)}`)
 
-    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    const res = await providerFetch('Groq transcription', 'https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
       body: form,
     })
     if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`)
     const json = await res.json() as WhisperResponse
+    console.log(`[audio] groq response ${whisperShape(json)}`)
     if (shouldRejectTranscript(json.text ?? '', json.segments ?? [])) {
       return { text: '', language: normalizeLang(json.language) || 'auto' }
     }
-    return { text: json.text.trim(), language: normalizeLang(json.language) || 'auto', cues: wordsToCues(json.words) }
+    const cues = cuesFromWhisperResponse(json)
+    console.log(`[audio] groq timings exactWords=${extractWhisperWords(json).length} cues=${cues.length}`)
+    return { text: json.text.trim(), language: normalizeLang(json.language) || 'auto', cues }
   }
 
   // Gemini: return JSON with text + detected language
   private async geminiAudio(buf: Buffer, apiKey: string): Promise<TranscribeResult> {
     const base64 = buf.toString('base64')
-    const res = await fetch(
+    const res = await providerFetch(
+      'Gemini transcription',
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
@@ -121,7 +185,7 @@ Never include explanation, markdown, or any text outside the JSON object.`,
         }),
       },
     )
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`)
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${formatProviderError(await res.text())}`)
     const json = await res.json() as { candidates: { content: { parts: { text: string }[] } }[] }
     const raw = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
 

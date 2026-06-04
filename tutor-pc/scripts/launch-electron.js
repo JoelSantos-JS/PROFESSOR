@@ -9,6 +9,11 @@ const path = require('path')
 const env = { ...process.env }
 delete env.ELECTRON_RUN_AS_NODE
 
+if (env.PROFESSOR_INSECURE_TLS === '1') {
+  env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+  console.warn('[dev] PROFESSOR_INSECURE_TLS=1: TLS certificate validation is disabled for this Electron process.')
+}
+
 const electronBin = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron.exe')
 
 const child = spawn(electronBin, ['.'], {

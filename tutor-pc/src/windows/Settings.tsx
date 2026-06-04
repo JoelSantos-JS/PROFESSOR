@@ -53,6 +53,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testingProvider, setTestingProvider] = useState<ProviderId | null>(null)
 
   useEffect(() => {
     settingsAPI.getAll().then(setSettings)
@@ -100,20 +102,28 @@ export default function Settings() {
     flash()
   }
 
+  const testProvider = async (id: ProviderId) => {
+    setTestingProvider(id)
+    setTestResult(null)
+    const result = await credentialsAPI.test(id)
+    setTestResult(result.ok ? (result.message ?? 'OK') : (result.error ?? 'Falha no teste'))
+    setTestingProvider(null)
+  }
+
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1500) }
 
   const configuredProviders = providers.filter(p => p.configured)
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen app-paper text-foreground">
       <TitleBar title="Configurações" showMinimize={false} />
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
         {/* Providers */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider">
+            <h2 className="label-eyebrow">
               Provedores de IA — Sua chave, seus tokens
             </h2>
             <div className="flex items-center gap-2">
@@ -125,6 +135,11 @@ export default function Settings() {
               {saveError && (
                 <span className="text-xs text-danger truncate max-w-48" title={saveError}>
                   Erro: {saveError}
+                </span>
+              )}
+              {testResult && (
+                <span className="text-xs text-muted truncate max-w-72" title={testResult}>
+                  {testResult}
                 </span>
               )}
               <button
@@ -150,10 +165,10 @@ export default function Settings() {
                 <div
                   key={id}
                   className={[
-                    'rounded-xl border transition-colors',
+                    'rounded-2xl border transition-colors shadow-[var(--sh-1)]',
                     isEditing
                       ? 'border-primary bg-surface-2'
-                      : 'border-border bg-surface',
+                      : 'border-border bg-white',
                   ].join(' ')}
                 >
                   {/* Header row */}
@@ -176,6 +191,16 @@ export default function Settings() {
                     </a>
                     {configured && !isEditing && (
                       <button
+                        onClick={() => testProvider(id)}
+                        disabled={testingProvider === id}
+                        className="text-xs px-3 py-1.5 rounded-full font-bold transition-colors text-primary bg-primary/10 hover:bg-primary/15 disabled:opacity-50"
+                        title="Testar esta chave no provider"
+                      >
+                        {testingProvider === id ? 'Testando...' : 'Testar'}
+                      </button>
+                    )}
+                    {configured && !isEditing && (
+                      <button
                         onClick={() => removeKey(id)}
                         className="text-muted hover:text-danger transition-colors ml-1"
                         title="Remover chave"
@@ -186,7 +211,7 @@ export default function Settings() {
                     <button
                       onClick={() => isEditing ? setEditing(null) : startEdit(id)}
                       className={[
-                        'text-xs px-2.5 py-1 rounded-md font-medium transition-colors ml-1',
+                        'text-xs px-3 py-1.5 rounded-full font-bold transition-colors ml-1',
                         isEditing
                           ? 'text-muted hover:text-foreground'
                           : configured
@@ -201,7 +226,7 @@ export default function Settings() {
                   {/* Inline key input */}
                   {isEditing && (
                     <div className="px-4 pb-3 flex gap-2">
-                      <div className="flex-1 flex items-center bg-background border border-border rounded-lg overflow-hidden focus-within:border-primary transition-colors">
+                      <div className="flex-1 flex items-center bg-white border border-border rounded-xl overflow-hidden focus-within:border-primary transition-colors">
                         <input
                           type={showKey ? 'text' : 'password'}
                           value={keyInput}
@@ -222,7 +247,7 @@ export default function Settings() {
                       <button
                         onClick={saveKey}
                         disabled={saving || !keyInput.trim()}
-                        className="px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
+                        className="pill-button pill-primary px-4 py-2 disabled:opacity-40 text-sm"
                       >
                         <Check size={13} />
                         Salvar
@@ -237,10 +262,10 @@ export default function Settings() {
 
         {/* Active providers */}
         <section>
-          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
+          <h2 className="label-eyebrow mb-3">
             Provider Ativo
           </h2>
-          <div className="bg-surface rounded-xl border border-border divide-y divide-border">
+          <div className="paper-card divide-y divide-border">
             <ProviderSelect
               label="Tutor AI"
               value={(settings.activeAiProvider as ProviderId) ?? 'gemini'}
@@ -266,10 +291,10 @@ export default function Settings() {
 
         {/* Shortcuts */}
         <section>
-          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
+          <h2 className="label-eyebrow mb-3">
             Atalhos globais
           </h2>
-          <div className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="paper-card overflow-hidden">
             {SHORTCUTS.map(({ key, desc }, i) => (
               <div
                 key={key}
@@ -279,7 +304,7 @@ export default function Settings() {
                 ].join(' ')}
               >
                 <span className="text-muted">{desc}</span>
-                <kbd className="px-2 py-0.5 bg-surface-2 text-foreground rounded text-xs font-mono">
+                <kbd className="px-2 py-0.5 bg-surface-2 text-foreground rounded-md text-xs font-mono border border-border">
                   {key}
                 </kbd>
               </div>
@@ -289,9 +314,9 @@ export default function Settings() {
 
         {/* About */}
         <section>
-          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Sobre</h2>
-          <div className="bg-surface rounded-xl border border-border p-4">
-            <p className="text-sm font-medium text-foreground mb-1">PROFESSOR</p>
+          <h2 className="label-eyebrow mb-3">Sobre</h2>
+          <div className="paper-card p-4">
+            <p className="display-title text-xl text-foreground mb-1">PROFESSOR</p>
             <p className="text-xs text-muted">
               v0.1.0 — M0 Shell · Seu professor flutuante de inglês para qualquer áudio do PC.
             </p>

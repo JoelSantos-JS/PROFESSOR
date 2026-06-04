@@ -140,6 +140,7 @@ export interface IpcAPI {
     get: (id: ProviderId) => Promise<string | null>
     remove: (id: ProviderId) => Promise<void>
     debug: () => Promise<{ filePath: string; fileExists: boolean; configuredIds: string[] }>
+    test: (id: ProviderId) => Promise<{ ok: boolean; message?: string; error?: string }>
   }
   audio: {
     getSources: () => Promise<AudioSource[]>

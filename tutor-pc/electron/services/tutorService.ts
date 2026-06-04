@@ -1,6 +1,7 @@
 import { CredentialsService } from './credentialsService'
 import { SettingsService } from './settingsService'
 import { buildSystemPrompt, buildLookupPrompt, buildVariationsPrompt } from '../lib/tutorPrompt.js'
+import { providerFetch } from '../lib/providerFetch.js'
 
 export { buildSystemPrompt } from '../lib/tutorPrompt.js'
 
@@ -27,6 +28,17 @@ export interface WordLookup {
   romanization?: string
   meanings: string[]
   note?: string
+}
+
+function formatProviderError(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; status?: string } }
+    const status = parsed.error?.status
+    const message = parsed.error?.message
+    return [status, message].filter(Boolean).join(': ') || body
+  } catch {
+    return body
+  }
 }
 
 export class TutorService {
@@ -114,7 +126,8 @@ export class TutorService {
   }
 
   private async callGemini(apiKey: string, transcript: string, systemPrompt: string): Promise<string> {
-    const res = await fetch(
+    const res = await providerFetch(
+      'Gemini tutor',
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
@@ -129,13 +142,13 @@ export class TutorService {
         }),
       },
     )
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`)
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${formatProviderError(await res.text())}`)
     const json = await res.json() as { candidates: { content: { parts: { text: string }[] } }[] }
     return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
   }
 
   private async callOpenAI(apiKey: string, transcript: string, systemPrompt: string): Promise<string> {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await providerFetch('OpenAI tutor', 'https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -153,7 +166,7 @@ export class TutorService {
   }
 
   private async callAnthropic(apiKey: string, transcript: string, systemPrompt: string): Promise<string> {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await providerFetch('Anthropic tutor', 'https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -173,7 +186,7 @@ export class TutorService {
   }
 
   private async callGroq(apiKey: string, transcript: string, systemPrompt: string): Promise<string> {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await providerFetch('Groq tutor', 'https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({

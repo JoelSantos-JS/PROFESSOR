@@ -32,16 +32,18 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
 
   'floating-bar': {
     options: {
-      width: 400,
-      height: 520,
-      minWidth: 320,
-      minHeight: 300,
+      width: 420,
+      height: 600,
+      minWidth: 400,
+      minHeight: 460,
+      maxWidth: 440,
+      maxHeight: 680,
       show: false,
       frame: false,
       transparent: true,
       alwaysOnTop: true,
       skipTaskbar: false,
-      resizable: true,
+      resizable: false,
       movable: true,
       webPreferences: baseWebPrefs,
     },
@@ -63,10 +65,10 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
   'tutor-board': {
     startHidden: true,  // only appears once there's a transcription to show
     options: {
-      width: 680,
-      height: 480,
-      minWidth: 500,
-      minHeight: 360,
+      width: 820,
+      height: 680,
+      minWidth: 560,
+      minHeight: 420,
       show: false,
       frame: false,
       transparent: true,

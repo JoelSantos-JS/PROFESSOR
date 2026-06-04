@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BookOpen, Lightbulb, Mic, Volume2, RefreshCw, XCircle } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
 import DiffView from '../components/DiffView'
 import { audioAPI, onChannel, ttsAPI, listeningAPI, sessionAPI, tutorAPI, storeAPI } from '../services/electron'
 import { diffWords, scoreFromDiff, segmentText, wordMatches } from '../lib/text'
-import { findActiveCue, mapProgressIndex, findWordCue } from '../lib/tts'
+import { playbackProgress, tokenAtProgress, findWordCue } from '../lib/tts'
 import { capAudioMemory } from '../lib/audioCache'
-import { playClip } from '../lib/playClip'
+import { playClip, playRatioSlice, playSlice } from '../lib/playClip'
 import { connectedSpeech, hasConnectedSpeech } from '../lib/connectedSpeech'
 
 const isEnglishContent = (lang: string) => lang === 'en' || lang.startsWith('en-')
@@ -37,8 +37,7 @@ function romanLabel(lang: string): string {
 let currentAudio: HTMLAudioElement | null = null
 
 interface SpeakOpts {
-  onReady?: (cues: WordCue[]) => void  // cues available, before playback starts
-  onActive?: (idx: number) => void     // index of the cue currently being spoken
+  onProgress?: (fraction: number) => void  // playback progress 0..1 for karaoke
   onEnd?: () => void
 }
 
@@ -56,17 +55,23 @@ async function speak(text: string, lang: string, opts?: SpeakOpts): Promise<Word
     if (!res.ok || !res.dataUrl) { finish(); return [] }
 
     const cues = res.cues ?? []
-    opts?.onReady?.(cues)
     const audio = new Audio(res.dataUrl)
     currentAudio = audio
 
-    if (opts?.onActive && cues.length > 0) {
-      audio.ontimeupdate = () => {
-        opts.onActive!(findActiveCue(cues, audio.currentTime * 1000))
+    let raf = 0
+    const stopRaf = () => cancelAnimationFrame(raf)
+    if (opts?.onProgress) {
+      const tick = () => {
+        if (currentAudio !== audio) return
+        const dur = Number.isFinite(audio.duration) ? audio.duration * 1000 : 0
+        opts.onProgress!(playbackProgress(cues, audio.currentTime * 1000, dur))
+        raf = requestAnimationFrame(tick)
       }
+      audio.onplaying = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(tick) }
     }
-    audio.onended = finish
-    audio.onerror = finish
+    const end = () => { stopRaf(); finish() }
+    audio.onended = end
+    audio.onerror = end
 
     await audio.play().catch(err => { finish(); console.error('[tts] play() rejected:', err) })
     return cues
@@ -110,17 +115,21 @@ export default function TutorBoard() {
   }, [entries])
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground border border-white/10 rounded-lg overflow-hidden">
+    <div className="flex flex-col h-screen app-paper text-foreground overflow-hidden">
       <TitleBar title="Tutor Board" />
 
       {entries.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted">
           <Mic size={36} className="opacity-30" />
-          <p className="text-sm">Aguardando áudio...</p>
-          <p className="text-xs opacity-60">As análises aparecerão aqui automaticamente.</p>
+          <p className="display-title text-xl text-foreground">Aguardando áudio...</p>
+          <p className="text-sm opacity-70">As análises aparecerão aqui automaticamente.</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="max-w-[720px] mx-auto mb-1">
+            <h1 className="display-title text-2xl">Tutor Board</h1>
+            <p className="text-sm text-muted">{entries.length} frases capturadas desta sessão</p>
+          </div>
           {entries.map((entry, i) => (
             <EntryCard key={entry.id} entry={entry} index={i + 1} />
           ))}
@@ -131,7 +140,7 @@ export default function TutorBoard() {
   )
 }
 
-// ── Practice state per card ───────────────────────────────────────────────────
+// Practice state per card
 type PracticeState = 'idle' | 'countdown' | 'recording' | 'transcribing' | 'result'
 
 function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
@@ -141,23 +150,34 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
 
   // Playback + karaoke sync state (shared by TTS and Original)
   const [playMode, setPlayMode] = useState<'idle' | 'tts' | 'original'>('idle')
-  const [ttsCues, setTtsCues]   = useState<WordCue[]>([])
-  const [activeCue, setActiveCue] = useState(-1)
+  const [progress, setProgress] = useState(-1)  // 0..1 while playing, -1 idle
 
-  const speaking   = playMode === 'tts'
-  const liveCues   = playMode === 'original' ? (entry.originalCues ?? []) : ttsCues
-  const syncTotal  = playMode === 'idle' ? 0 : liveCues.length
-  const syncActive = playMode === 'idle' ? -1 : activeCue
+  const speaking    = playMode === 'tts'
+  const syncProgress = playMode === 'idle' ? -1 : progress
+
+  // Re-render (move the underline) ONLY when the highlighted word changes, not on
+  // every animation frame — avoids 60fps re-renders of the whole card, which was
+  // the main source of visible lag.
+  const wordCount = useMemo(
+    () => segmentText(entry.transcript, entry.contentLanguage).filter(s => s.isWord).length,
+    [entry.transcript, entry.contentLanguage],
+  )
+  const lastWordRef = useRef(-1)
+  const emitProgress = useCallback((p: number) => {
+    const w = tokenAtProgress(p, wordCount)
+    if (w !== lastWordRef.current) { lastWordRef.current = w; setProgress(p) }
+  }, [wordCount])
+  const resetSync = useCallback(() => { lastWordRef.current = -1; setPlayMode('idle'); setProgress(-1) }, [])
 
   // Word dictionary lookup
-  const [lookup, setLookup] = useState<{ word: string; loading: boolean; data?: WordLookup } | null>(null)
+  const [lookup, setLookup] = useState<{ word: string; wordIndex: number; approxStart: number; approxEnd: number; loading: boolean; data?: WordLookup } | null>(null)
 
-  const handleWordClick = useCallback(async (word: string) => {
+  const handleWordClick = useCallback(async (word: string, wordIndex: number, approxStart: number, approxEnd: number) => {
     const clean = word.trim()
     if (!clean) return
-    setLookup({ word: clean, loading: true })
+    setLookup({ word: clean, wordIndex, approxStart, approxEnd, loading: true })
     const res = await tutorAPI.lookup(clean, entry.transcript, entry.contentLanguage)
-    setLookup({ word: clean, loading: false, data: res.ok ? res.result : undefined })
+    setLookup({ word: clean, wordIndex, approxStart, approxEnd, loading: false, data: res.ok ? res.result : undefined })
   }, [entry.transcript, entry.contentLanguage])
 
   const recorderRef    = useRef<MediaRecorder | null>(null)
@@ -179,26 +199,24 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
   }, [])
 
   const handleListen = useCallback(async () => {
-    setPlayMode('tts')
-    setActiveCue(-1)
+    setPlayMode('tts'); lastWordRef.current = -1; setProgress(0)
     await speak(entry.transcript, entry.contentLanguage, {
-      onReady:  got => setTtsCues(got),
-      onActive: idx => setActiveCue(idx),
-      onEnd:    () => { setPlayMode('idle'); setActiveCue(-1) },
+      onProgress: emitProgress,
+      onEnd:      resetSync,
     })
-  }, [entry.transcript, entry.contentLanguage])
+  }, [entry.transcript, entry.contentLanguage, emitProgress, resetSync])
 
-  // Play the ORIGINAL captured audio, synced word-by-word via Whisper timings
+  // Play the ORIGINAL captured audio, underlining the text word-by-word.
+  // Uses Whisper word cues when available, else falls back to elapsed/duration.
   const handleOriginal = useCallback(() => {
+    if (!entry.originalAudioUrl) return
     const cues = entry.originalCues ?? []
-    if (cues.length === 0) { playClip(entry.originalAudioUrl); return }
-    setPlayMode('original')
-    setActiveCue(-1)
+    setPlayMode('original'); lastWordRef.current = -1; setProgress(0)
     playClip(entry.originalAudioUrl, {
-      onTime: ms => setActiveCue(findActiveCue(cues, ms)),
-      onEnd:  () => { setPlayMode('idle'); setActiveCue(-1) },
+      onTime: (ms, dur) => emitProgress(playbackProgress(cues, ms, dur)),
+      onEnd:  resetSync,
     })
-  }, [entry.originalAudioUrl, entry.originalCues])
+  }, [entry.originalAudioUrl, entry.originalCues, emitProgress, resetSync])
 
   const stopRecording = useCallback(() => {
     recorderRef.current?.stop()
@@ -294,27 +312,25 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
   }, [entry.transcript])
 
   return (
-    <div className="rounded-xl border border-border bg-surface overflow-hidden">
+    <div className="paper-card fade-up overflow-hidden max-w-[720px] mx-auto">
 
       {/* Transcript + action buttons */}
-      <div className="flex items-start gap-2.5 px-4 py-3 border-b border-border/60">
-        <span className="text-xs text-muted mt-0.5 shrink-0 font-mono">#{index}</span>
+      <div className="flex items-start gap-3 px-4 py-3.5 border-b border-border/70">
+        <span className="text-[12px] font-bold text-muted mt-1 shrink-0">#{index}</span>
         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
           {entry.romanization && (
             <p className="text-xs font-mono leading-relaxed">
-              <span className="text-primary/40 mr-1.5">{romanLabel(entry.contentLanguage)}</span>
+              <span className="label-eyebrow mr-2">{romanLabel(entry.contentLanguage)}</span>
               <SyncedTokens
                 text={entry.romanization}
-                totalCues={syncTotal}
-                activeCue={syncActive}
+                progress={syncProgress}
               />
             </p>
           )}
           <SyncedTranscript
             text={entry.transcript}
             lang={entry.contentLanguage}
-            totalCues={syncTotal}
-            activeCue={syncActive}
+            progress={syncProgress}
             onWordClick={handleWordClick}
           />
           {isEnglishContent(entry.contentLanguage) && hasConnectedSpeech(entry.transcript) && (
@@ -327,6 +343,7 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
             <WordPopover
               lookup={lookup}
               lang={entry.contentLanguage}
+              totalWords={wordCount}
               originalAudioUrl={entry.originalAudioUrl}
               originalCues={entry.originalCues}
               onClose={() => setLookup(null)}
@@ -341,14 +358,14 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-1.5 shrink-0 mt-0.5">
+        <div className="flex gap-1.5 shrink-0 mt-0.5 flex-wrap justify-end">
           {entry.originalAudioUrl && (
             <button
               onClick={handleOriginal}
-              className="flex items-center gap-1 text-xs text-muted hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-primary/10"
+              className="audio-chip audio-orig"
               title="Ouvir o áudio original da cena"
             >
-              <Volume2 size={12} />
+              <span className="dot" />
               <span>Original</span>
             </button>
           )}
@@ -356,21 +373,21 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
             onClick={handleListen}
             disabled={speaking}
             className={[
-              'flex items-center gap-1 text-xs transition-colors px-2 py-1 rounded-md',
-              speaking ? 'text-primary bg-primary/10' : 'text-muted hover:text-primary hover:bg-primary/10',
+              'audio-chip audio-tts',
+              speaking ? 'brightness-95' : '',
             ].join(' ')}
             title="Ouvir voz sintetizada (TTS)"
           >
-            <Volume2 size={12} className={speaking ? 'animate-pulse' : ''} />
+            <span className="dot" />
             <span>{speaking ? 'Ouvindo' : 'TTS'}</span>
           </button>
           <button
             onClick={() => practice === 'idle' || practice === 'result' ? startPractice() : stopRecording()}
             className={[
-              'flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors',
+              'pill-button px-3 py-1.5 text-xs border',
               practice === 'recording'
-                ? 'text-danger bg-danger/10 hover:bg-danger/20'
-                : 'text-muted hover:text-warning hover:bg-warning/10',
+                ? 'text-danger bg-danger/10 border-danger/30 hover:bg-danger/20'
+                : 'text-primary bg-primary/10 border-primary/20 hover:bg-primary/15',
             ].join(' ')}
             title="Praticar pronúncia"
           >
@@ -387,16 +404,16 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
 
       {/* Analysis error (e.g. Gemini billing / rate limit) */}
       {entry.analysisError && (
-        <div className="px-4 py-2 border-b border-border/60 bg-danger/5">
-          <p className="text-xs text-danger/90">⚠️ Análise falhou: {entry.analysisError}</p>
+        <div className="px-5 py-2 border-b border-border/60 bg-danger/5">
+          <p className="text-xs text-danger/90">Análise falhou: {entry.analysisError}</p>
         </div>
       )}
 
       {/* Practice result */}
       {practice === 'result' && result && (
-        <div className="px-4 py-3 border-b border-border/60 bg-surface-2">
+        <div className="px-5 py-3 border-b border-border/60 bg-surface-2">
           <div className="flex items-center gap-2 mb-2">
-            <span className={`text-sm font-bold ${result.score >= 80 ? 'text-success' : result.score >= 50 ? 'text-warning' : 'text-danger'}`}>
+            <span className={`score-badge ${result.score >= 80 ? 'score-good' : result.score >= 50 ? 'score-ok' : 'score-bad'}`}>
               {result.score}%
             </span>
             <span className="text-xs text-muted">de precisão</span>
@@ -407,10 +424,10 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
 
       {/* Vocab */}
       {entry.vocab.length > 0 && (
-        <div className="px-4 py-3 border-b border-border/60">
+        <div className="px-5 py-3 border-b border-border/60">
           <div className="flex items-center gap-1.5 mb-2.5">
             <BookOpen size={12} className="text-primary" />
-            <span className="text-xs font-semibold text-primary uppercase tracking-wider">Vocabulário</span>
+            <span className="label-eyebrow text-primary">Vocabulário</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {entry.vocab.map((v, j) => <VocabCard key={j} item={v} lang={entry.contentLanguage} />)}
@@ -420,42 +437,61 @@ function EntryCard({ entry, index }: { entry: TutorAnalysis; index: number }) {
 
       {/* Tip */}
       {entry.tip && (
-        <div className="flex items-start gap-2.5 px-4 py-3">
-          <Lightbulb size={13} className="text-warning shrink-0 mt-0.5" />
-          <p className="text-xs text-muted leading-relaxed">{entry.tip}</p>
+        <div className="flex items-start gap-2.5 mx-5 my-3 rounded-xl bg-primary/10 px-3.5 py-3 text-primary">
+          <Lightbulb size={15} className="shrink-0 mt-0.5" />
+          <p className="text-[13px] leading-relaxed text-primary">{entry.tip}</p>
         </div>
       )}
     </div>
   )
 }
 
-// ── Transcript: clickable words + karaoke highlight during TTS ────────────────
-function SyncedTranscript({ text, lang, totalCues, activeCue, onWordClick }: {
+// Transcript: clickable words + karaoke highlight during TTS
+function SyncedTranscript({ text, lang, progress, onWordClick }: {
   text: string
   lang: string
-  totalCues: number
-  activeCue: number
-  onWordClick: (word: string) => void
+  progress: number   // 0..1 while playing, -1 idle
+  onWordClick: (word: string, wordIndex: number, approxStart: number, approxEnd: number) => void
 }) {
-  const segments = segmentText(text, lang)
+  const segments = useMemo(() => segmentText(text, lang), [text, lang])
   const wordCount = segments.filter(s => s.isWord).length
-  const active = mapProgressIndex(activeCue, totalCues, wordCount)
+  const active = tokenAtProgress(progress, wordCount)
+  const dense = wordCount > 18 || text.length > 120
+  const approxRatios = useMemo(() => {
+    const weights = segments
+      .filter(s => s.isWord)
+      .map(s => Math.max(1.4, Array.from(s.text.replace(/[^\p{L}\p{N}]/gu, '')).length * 0.72 + 0.8))
+    const total = weights.reduce((sum, weight) => sum + weight, 0) || 1
+    let acc = 0
+    return weights.map(weight => {
+      const start = acc / total
+      acc += weight
+      return { start, end: acc / total }
+    })
+  }, [segments])
 
   let wordIdx = -1
   return (
-    <p className="text-sm leading-relaxed">
+    <p className={[
+      dense
+        ? 'text-[15px] leading-[1.7] font-semibold'
+        : 'text-[18px] leading-[1.65] font-semibold',
+      'text-foreground',
+    ].join(' ')}>
       {segments.map((seg, i) => {
         if (!seg.isWord) return <span key={i}>{seg.text}</span>
         wordIdx++
+        const clickedIndex = wordIdx
+        const approx = approxRatios[clickedIndex] ?? { start: 0, end: 1 }
         const isActive = wordIdx === active
         return (
           <span
             key={i}
-            onClick={() => onWordClick(seg.text)}
+            onClick={() => onWordClick(seg.text, clickedIndex, approx.start, approx.end)}
             className={[
-              'cursor-pointer rounded transition-colors duration-100',
+              'cursor-pointer transition-all duration-100 px-0.5 rounded',
               isActive
-                ? 'bg-primary/30 text-primary font-medium'
+                ? 'bg-primary text-white underline decoration-2 underline-offset-2'
                 : 'text-foreground hover:bg-primary/15 hover:text-primary',
             ].join(' ')}
             title="Clique para ouvir e ver o significado"
@@ -468,10 +504,11 @@ function SyncedTranscript({ text, lang, totalCues, activeCue, onWordClick }: {
   )
 }
 
-// ── Word lookup popover (meaning + variants + listen + practice) ──────────────
-function WordPopover({ lookup, lang, originalAudioUrl, originalCues, onClose }: {
-  lookup: { word: string; loading: boolean; data?: WordLookup }
+// Word lookup popover (meaning + variants + listen + practice)
+function WordPopover({ lookup, lang, totalWords, originalAudioUrl, originalCues, onClose }: {
+  lookup: { word: string; wordIndex: number; approxStart: number; approxEnd: number; loading: boolean; data?: WordLookup }
   lang: string
+  totalWords: number
   originalAudioUrl?: string
   originalCues?: WordCue[]
   onClose: () => void
@@ -479,12 +516,16 @@ function WordPopover({ lookup, lang, originalAudioUrl, originalCues, onClose }: 
   const { state, countdown, start, stop, cancel } = usePractice()
   const [attempt, setAttempt] = useState<{ ok: boolean; heard: string } | null>(null)
 
-  // Slice of the original audio for THIS word (if we have its timestamp)
-  const wordCue = originalCues ? findWordCue(originalCues, lookup.word) : undefined
+  // Slice of the original audio for this word. If word timestamps are missing,
+  // use a short estimated slice instead of playing the whole sentence.
+  const wordCue = originalCues ? findWordCue(originalCues, lookup.word, lookup.wordIndex) : undefined
   const playOriginalWord = () => {
-    if (originalAudioUrl && wordCue) {
-      playClip(originalAudioUrl, { startMs: wordCue.start, endMs: wordCue.end })
+    if (!originalAudioUrl) return
+    if (wordCue && wordCue.end > wordCue.start) {
+      playSlice(originalAudioUrl, Math.max(0, wordCue.start - 50), wordCue.end + 90)
+      return
     }
+    playRatioSlice(originalAudioUrl, lookup.approxStart, lookup.approxEnd)
   }
 
   const practice = () => {
@@ -518,18 +559,18 @@ function WordPopover({ lookup, lang, originalAudioUrl, originalCues, onClose }: 
         {lookup.data?.romanization && (
           <span className="text-xs text-primary/70 font-mono">{lookup.data.romanization}</span>
         )}
-        {wordCue && originalAudioUrl && (
+        {originalAudioUrl && (
           <button
             onClick={playOriginalWord}
-            className="flex items-center gap-0.5 text-[11px] text-primary/80 hover:text-primary transition-colors"
-            title="Ouvir a pronúncia original (voz da cena)"
+            className="flex items-center gap-0.5 text-[11px] text-[#3E7BB6] hover:brightness-90 transition-all font-semibold"
+            title={wordCue ? 'Ouvir a pronúncia original desta palavra' : 'Ouvir um recorte aproximado desta palavra'}
           >
             <Volume2 size={12} /> Original
           </button>
         )}
         <button
           onClick={() => speak(lookup.word, lang)}
-          className="flex items-center gap-0.5 text-[11px] text-muted hover:text-primary transition-colors"
+          className="flex items-center gap-0.5 text-[11px] text-[#9A6A1E] hover:brightness-90 transition-all font-semibold"
           title="Ouvir voz sintetizada (TTS)"
         >
           <Volume2 size={12} /> TTS
@@ -576,14 +617,14 @@ function WordPopover({ lookup, lang, originalAudioUrl, originalCues, onClose }: 
   )
 }
 
-// ── Parallel text (e.g. Pinyin) highlighted proportionally to the spoken audio ─
-function SyncedTokens({ text, totalCues, activeCue }: { text: string; totalCues: number; activeCue: number }) {
-  const tokens = text.split(/(\s+)/)             // keep whitespace tokens to preserve spacing
-  const words  = tokens.filter(t => t.trim())    // only non-space tokens are highlightable
-  const active = mapProgressIndex(activeCue, totalCues, words.length)
+// Parallel text (e.g. Pinyin) highlighted proportionally to the spoken audio
+function SyncedTokens({ text, progress }: { text: string; progress: number }) {
+  const tokens = useMemo(() => text.split(/(\s+)/), [text])  // keep whitespace to preserve spacing
+  const words  = tokens.filter(t => t.trim())                // only non-space tokens are highlightable
+  const active = tokenAtProgress(progress, words.length)
 
   // Not playing → plain
-  if (activeCue < 0 || totalCues === 0) {
+  if (progress < 0) {
     return <span className="text-primary/80">{text}</span>
   }
 
@@ -598,8 +639,8 @@ function SyncedTokens({ text, totalCues, activeCue }: { text: string; totalCues:
           <span
             key={i}
             className={[
-              'transition-colors duration-100 rounded',
-              isActive ? 'bg-primary/30 text-primary font-semibold' : 'text-primary/60',
+              'transition-all duration-100 rounded px-0.5',
+              isActive ? 'bg-primary text-white font-semibold underline decoration-2 underline-offset-2' : 'text-primary/70',
             ].join(' ')}
           >
             {tok}
@@ -619,10 +660,10 @@ function VocabCard({ item, lang }: { item: { word: string; romanization?: string
       tabIndex={0}
       onClick={() => setOpen(o => !o)}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setOpen(o => !o) }}
-      className="text-left rounded-lg border border-border/80 bg-surface-2 px-3 py-2 hover:border-primary/50 transition-colors group cursor-pointer"
+      className="text-left rounded-full border border-border bg-surface-2 px-3 py-2 hover:border-primary/50 hover:bg-primary/10 transition-colors group cursor-pointer"
     >
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-medium text-foreground">{item.word}</span>
+        <span className="text-sm font-semibold text-foreground">{item.word}</span>
         {item.romanization && <span className="text-xs text-primary/70 font-mono">{item.romanization}</span>}
         <span className="text-xs text-muted">{item.translation}</span>
         <button

@@ -7,6 +7,7 @@
   "main": "dist-electron/main.mjs",
   "scripts": {
     "dev": "vite build --config vite.electron.main.config.ts && vite build --config vite.electron.config.ts && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/launch-electron.js\"",
+    "dev:insecure-tls": "cross-env PROFESSOR_INSECURE_TLS=1 npm run dev",
     "build": "vite build --config vite.electron.main.config.ts && vite build --config vite.electron.config.ts && vite build",
     "test": "vitest run --reporter=verbose",
     "test:watch": "vitest --reporter=verbose",

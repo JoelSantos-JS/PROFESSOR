@@ -9,25 +9,33 @@ interface Props {
 export default function TitleBar({ title, showMinimize = true }: Props) {
   return (
     <div
-      className="flex items-center justify-between h-9 px-4 bg-background border-b border-border select-none shrink-0"
+      className="flex items-center gap-3 h-[46px] px-4 bg-surface-2 border-b border-border select-none shrink-0"
       style={{ WebkitAppRegion: 'drag' }}
     >
-      <span className="text-xs font-medium text-muted">{title}</span>
+      <div className="w-[22px] h-[22px] rounded-[7px] bg-primary text-white grid place-items-center shrink-0">
+        <span className="text-[12px] font-bold leading-none">P</span>
+      </div>
+      <div className="min-w-0">
+        <span className="block text-sm font-semibold text-foreground truncate">{title}</span>
+        <span className="block text-[11px] font-medium text-muted -mt-0.5">PROFESSOR</span>
+      </div>
       <div
-        className="flex items-center gap-0.5"
+        className="ml-auto flex items-center gap-1"
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {showMinimize && (
           <button
             onClick={() => windowAPI.minimize()}
-            className="w-6 h-6 flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-surface-2 transition-colors"
+            className="w-[30px] h-[30px] flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-border transition-colors"
+            title="Minimizar"
           >
             <Minus size={12} />
           </button>
         )}
         <button
           onClick={() => windowAPI.close()}
-          className="w-6 h-6 flex items-center justify-center rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+          className="w-[30px] h-[30px] flex items-center justify-center rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+          title="Fechar"
         >
           <X size={12} />
         </button>

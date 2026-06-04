@@ -22,6 +22,8 @@ export const credentialsAPI = {
   get: (id: ProviderId) => window.api.credentials.get(id),
   remove: (id: ProviderId) => window.api.credentials.remove(id),
   debug: () => window.api.credentials.debug(),
+  test: (id: ProviderId): Promise<{ ok: boolean; message?: string; error?: string }> =>
+    window.api.credentials.test(id),
 }
 
 export const audioAPI = {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { wordsToCues } from './whisperWords'
+import { cuesFromWhisperResponse, estimateWordsFromSegments, extractWhisperWords, wordsToCues } from './whisperWords'
 
 describe('wordsToCues', () => {
   it('converts seconds to milliseconds', () => {
@@ -48,5 +48,48 @@ describe('wordsToCues', () => {
   it('handles CJK words', () => {
     const cues = wordsToCues([{ word: '가만히', start: 0.1, end: 0.5 }])
     expect(cues).toEqual([{ part: '가만히', start: 100, end: 500 }])
+  })
+})
+
+describe('extractWhisperWords', () => {
+  it('uses top-level words first', () => {
+    const words = extractWhisperWords({
+      words: [{ word: 'top', start: 0, end: 0.2 }],
+      segments: [{ words: [{ word: 'nested', start: 0.2, end: 0.4 }] }],
+    })
+    expect(words.map(w => w.word)).toEqual(['top'])
+  })
+
+  it('falls back to segment words', () => {
+    const words = extractWhisperWords({
+      segments: [
+        { words: [{ word: 'hello', start: 0.1, end: 0.4 }] },
+        { words: [{ word: 'world', start: 0.5, end: 0.9 }] },
+      ],
+    })
+    expect(words.map(w => w.word)).toEqual(['hello', 'world'])
+  })
+})
+
+describe('estimateWordsFromSegments', () => {
+  it('estimates word timings inside timed segments when exact words are absent', () => {
+    const words = estimateWordsFromSegments([{ text: 'average Brazilian', start: 10, end: 12 }])
+    expect(words.map(w => w.word)).toEqual(['average', 'Brazilian'])
+    expect(words[0].start).toBe(10)
+    expect(words[1].start).toBeGreaterThan(words[0].start!)
+    expect(words[1].end).toBe(12)
+  })
+
+  it('builds cues from exact or estimated timings', () => {
+    expect(cuesFromWhisperResponse({
+      segments: [{ words: [{ word: 'exact', start: 1, end: 1.4 }] }],
+    })).toEqual([{ part: 'exact', start: 1000, end: 1400 }])
+
+    const estimated = cuesFromWhisperResponse({
+      segments: [{ text: 'two words', start: 2, end: 3 }],
+    })
+    expect(estimated.map(c => c.part)).toEqual(['two', 'words'])
+    expect(estimated[0].start).toBe(2000)
+    expect(estimated[1].end).toBe(3000)
   })
 })
