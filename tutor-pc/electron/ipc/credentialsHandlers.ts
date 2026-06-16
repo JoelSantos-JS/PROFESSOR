@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { CredentialsService, type ProviderId } from '../services/credentialsService'
 import { providerFetch } from '../lib/providerFetch.js'
+import { buildTestProbe } from '../lib/providerTestProbe.js'
 
 export function setupCredentialsHandlers(): void {
   const credentials = new CredentialsService()
@@ -27,13 +28,13 @@ export function setupCredentialsHandlers(): void {
     const apiKey = credentials.get(id)
     if (!apiKey) return { ok: false, error: `Nenhuma chave configurada para "${id}".` }
 
+    const probe = buildTestProbe(id, apiKey)
+    if (!probe) return { ok: false, error: `Teste não disponível para "${id}".` }
+
     try {
-      if (id === 'gemini') {
-        const res = await providerFetch('Gemini test', `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
-        if (!res.ok) return { ok: false, error: `Gemini ${res.status}: ${await compactProviderError(res)}` }
-        return { ok: true, message: 'Gemini respondeu com sucesso para esta chave.' }
-      }
-      return { ok: false, error: `Teste ainda não implementado para "${id}".` }
+      const res = await providerFetch(`${probe.label} test`, probe.url, { headers: probe.headers })
+      if (!res.ok) return { ok: false, error: `${probe.label} ${res.status}: ${await compactProviderError(res)}` }
+      return { ok: true, message: `${probe.label}: chave válida ✓` }
     } catch (err) {
       return { ok: false, error: (err as Error).message }
     }

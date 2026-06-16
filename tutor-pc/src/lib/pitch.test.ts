@@ -30,6 +30,13 @@ describe('detectPitch', () => {
     expect(detectPitch(sine(200, 2048, SR, 0.001), SR)).toBe(0)
   })
 
+  it('detects soft-but-real speech levels (acima do gate afrouxado)', () => {
+    // amp 0.008 → RMS ≈ 0.0057: abaixo do gate antigo (0.006) mas acima do novo (0.004)
+    const f = detectPitch(sine(200, 2048, SR, 0.008), SR)
+    expect(f).toBeGreaterThan(190)
+    expect(f).toBeLessThan(210)
+  })
+
   it('returns 0 for white noise (no clear period)', () => {
     const noise = Float32Array.from({ length: 2048 }, () => (Math.random() * 2 - 1) * 0.5)
     // noise occasionally yields a weak peak; just assert it is not a confident musical tone

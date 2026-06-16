@@ -11,7 +11,7 @@ export function detectPitch(
   sampleRate: number,
   minHz = 70,
   maxHz = 400,
-  rmsGate = 0.006,
+  rmsGate = 0.004,   // capta fala mais baixa (mic distante/baixo); o ruído ainda é barrado pela periodicidade
 ): number {
   const n = buf.length
   if (n === 0 || sampleRate <= 0) return 0

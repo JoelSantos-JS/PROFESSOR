@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { WindowName } from '../types'
+import Auth from '../windows/Auth'
 import FloatingBar from '../windows/FloatingBar'
 import Dashboard from '../windows/Dashboard'
 import Settings from '../windows/Settings'
@@ -12,6 +13,7 @@ function getWindowName(): WindowName {
 }
 
 const WINDOWS: Record<string, React.ComponentType> = {
+  auth: Auth,
   dashboard: Dashboard,
   'floating-bar': FloatingBar,
   settings: Settings,

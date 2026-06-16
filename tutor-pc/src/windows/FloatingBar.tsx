@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Mic, MicOff, Loader2, Settings, X, Volume2, User, Zap } from 'lucide-react'
-import { windowAPI, audioAPI, tutorAPI, onChannel, storeAPI, mediaAPI, ttsAPI, sessionAPI } from '../services/electron'
+import { Clock, Mic, MicOff, Loader2, Settings, X, Volume2, User, Zap } from 'lucide-react'
+import { windowAPI, audioAPI, tutorAPI, onChannel, storeAPI, mediaAPI, ttsAPI, sessionAPI, floatingBarAPI, settingsAPI } from '../services/electron'
+import { floatingBarMode } from '../lib/floatingBar'
+import { uiText, appLanguage, type AppLanguage } from '../lib/uiLanguage'
+import { UiLangProvider, useT } from '../lib/uiLangContext'
 import { isVoiced, peakLevel } from '../lib/audio'
 import { diffWords, scoreFromDiff } from '../lib/text'
 import { onSentence, onPracticeDone, onAbort, INITIAL_MONITOR, type MonitorState } from '../lib/monitor'
@@ -24,6 +27,14 @@ import type { SessionAttempt, DiffToken, WordCue } from '../types'
 
 type State = 'idle' | 'listening' | 'processing'
 
+function formatSessionTime(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  return [h, m, s].map(n => String(n).padStart(2, '0')).join(':')
+}
+
 const VAD_TICK_MS    = 80    // how often the VAD samples the analyser
 const SILENCE_END_MS = 1450  // wait for a real pause before closing a sentence
 const MIN_SPEECH_MS  = 650
@@ -41,8 +52,16 @@ export default function FloatingBar() {
   const [activeTab, setActiveTab] = useState<'transcricao' | 'sessao'>('transcricao')
   const [attempts, setAttempts]   = useState<SessionAttempt[]>([])
   const [level, setLevel]         = useState(0)  // live audio peak (0-128) for the meter
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
+  const [sessionNow, setSessionNow] = useState(Date.now())
+  const [uiLang, setUiLang] = useState<AppLanguage>('pt')
+  const uiLangRef = useRef<AppLanguage>('pt')  // p/ usar dentro de callbacks (mensagens de erro)
+  const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
+  const tc = (key: Parameters<typeof uiText>[1]) => uiText(uiLangRef.current, key)  // tradução em callback
   const lastLineRef               = useRef<string>('')
   const sessionLinesRef           = useRef(0)     // lines captured this session
+  const sessionPreviewRef         = useRef<string[]>([])
+  const sessionLangRef            = useRef<string>('')
   const transcriptLangRef         = useRef<string>('')  // last detected language
   const lastAudioRef              = useRef<string>('')  // last captured original clip (data URL)
   const lastCuesRef               = useRef<WordCue[]>([])  // per-word timings of the last clip
@@ -124,7 +143,9 @@ export default function FloatingBar() {
         if (text && text !== lastLineRef.current) {
           lastLineRef.current = text
           transcriptLangRef.current = result.language ?? ''
+          sessionLangRef.current = result.language ?? sessionLangRef.current
           sessionLinesRef.current += 1
+          sessionPreviewRef.current = [...sessionPreviewRef.current, text].slice(-5)
           // Keep the ORIGINAL captured audio so it can be replayed (in-memory data URL)
           const originalAudioUrl = await blobToDataUrl(new Blob([buffer], { type: playableMimeType }))
           lastAudioRef.current = originalAudioUrl
@@ -178,7 +199,7 @@ export default function FloatingBar() {
 
       const dest = ctx.createMediaStreamDestination()
       const sysAudio = sysStream.getAudioTracks()
-      if (sysAudio.length === 0) throw new Error('Sem áudio do sistema. Toque algo e tente de novo.')
+      if (sysAudio.length === 0) throw new Error(tc('noSystemAudio'))
 
       const source = ctx.createMediaStreamSource(sysStream)
 
@@ -201,7 +222,7 @@ export default function FloatingBar() {
       sysAudio[0]?.addEventListener('ended', () => {
         if (stateRef.current !== 'idle') {
           setStateSynced('idle'); stopAll()
-          setError('Áudio desconectado. Clique para reiniciar.')
+          setError(tc('audioDisconnected'))
         }
       })
 
@@ -231,7 +252,7 @@ export default function FloatingBar() {
           }
           if (stateRef.current !== 'idle') startSegment()  // ready for next utterance
         }
-        rec.onerror = () => { setError('Erro no gravador.'); setStateSynced('idle'); stopAll() }
+        rec.onerror = () => { setError(tc('recorderError')); setStateSynced('idle'); stopAll() }
         rec.start()
       }
 
@@ -288,6 +309,9 @@ export default function FloatingBar() {
       }
 
       sessionLinesRef.current = 0
+      sessionPreviewRef.current = []
+      sessionLangRef.current = ''
+      setSessionStartedAt(Date.now())
       isSpeaking.current = false
       lastVoiceRef.current = Date.now()
       setStateSynced('listening')
@@ -295,16 +319,25 @@ export default function FloatingBar() {
       vadTimerRef.current = setInterval(tick, VAD_TICK_MS)
     } catch (err) {
       setError((err as Error).message)
+      setSessionStartedAt(null)
       setStateSynced('idle')
     }
   }, [setStateSynced, stopAll, transcribeChunks])
 
   const stopListening = useCallback(() => {
     setStateSynced('idle')
+    setSessionStartedAt(null)
     stopAll()
     if (sessionLinesRef.current > 0) {
-      storeAPI.recordSession(sessionLinesRef.current).catch(console.error)
+      storeAPI.recordSession({
+        lineCount: sessionLinesRef.current,
+        lang: sessionLangRef.current,
+        preview: sessionPreviewRef.current,
+        endedAt: Date.now(),
+      }).catch(console.error)
       sessionLinesRef.current = 0
+      sessionPreviewRef.current = []
+      sessionLangRef.current = ''
     }
   }, [setStateSynced, stopAll])
 
@@ -344,6 +377,14 @@ export default function FloatingBar() {
   }, [startListening, stopListening])
 
   useEffect(() => {
+    settingsAPI.getAll().then(s => {
+      const lang = appLanguage(s.appLanguage)
+      setUiLang(lang)
+      uiLangRef.current = lang
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     return onChannel('shortcut:fired', (action) => {
       if (action === 'toggle-listening') toggle()
     })
@@ -367,6 +408,13 @@ export default function FloatingBar() {
 
   useEffect(() => { practiceSentenceRef.current = practiceSentence }, [practiceSentence])
 
+  useEffect(() => {
+    if (!sessionStartedAt) return
+    setSessionNow(Date.now())
+    const timer = setInterval(() => setSessionNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [sessionStartedAt])
+
   // Practice attempts arrive here → "Sessão" tab.
   // Don't auto-switch tabs while an auto-practice overlay is open (it would hide
   // the result); the tab badge count signals new attempts instead.
@@ -380,8 +428,22 @@ export default function FloatingBar() {
 
   const isListening  = state === 'listening'
   const isProcessing = state === 'processing'
+  const sessionTime = sessionStartedAt ? formatSessionTime(sessionNow - sessionStartedAt) : '00:00:00'
+
+  // A janela abre COMPACTA (vazia/ociosa) e cresce para CHEIA só quando há conteúdo a mostrar
+  // (escuta/processamento, treino, ou um feed com itens). Pede o tamanho ao processo main.
+  useEffect(() => {
+    floatingBarAPI.setMode(floatingBarMode({
+      busy: state !== 'idle',
+      practicing: !!practiceSentence,
+      tab: activeTab,
+      lineCount: lines.length,
+      attemptCount: attempts.length,
+    }))
+  }, [state, practiceSentence, activeTab, lines.length, attempts.length])
 
   return (
+    <UiLangProvider value={uiLang}>
     <div className="flex flex-col h-screen max-h-screen select-none overflow-hidden rounded-[20px] border border-white/15 text-[#EAF0EA] shadow-[var(--sh-bar)]"
       style={{
         background: 'linear-gradient(180deg, rgba(48,34,26,.94), rgba(38,27,21,.96))',
@@ -405,25 +467,37 @@ export default function FloatingBar() {
           <TabBtn
             active={activeTab === 'transcricao'}
             icon={<Mic size={11} />}
-            label="Transcrição"
+            label={t('tabTranscription')}
             onClick={() => setActiveTab('transcricao')}
           />
           <TabBtn
             active={activeTab === 'sessao'}
             icon={<User size={11} />}
-            label={`Sessão${attempts.length ? ` (${attempts.length})` : ''}`}
+            label={`${t('tabSession')}${attempts.length ? ` (${attempts.length})` : ''}`}
             onClick={() => setActiveTab('sessao')}
           />
         </div>
 
         {/* Right controls */}
         <div className="flex items-center gap-1.5 pb-2" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div
+            className={[
+              'flex items-center gap-1 px-1.5 py-1 rounded-full border text-[9.5px] font-mono tabular-nums',
+              sessionStartedAt
+                ? 'border-danger/35 bg-danger/10 text-[#ffb3ad]'
+                : 'border-white/[0.08] bg-white/5 text-white/35',
+            ].join(' ')}
+            title={t('sessionTimeTitle')}
+          >
+            <Clock size={10} />
+            {sessionTime}
+          </div>
           <div className={[
             'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider transition-all',
             isListening ? 'bg-danger/20 text-[#ffb3ad]' : 'bg-white/5 text-white/45',
           ].join(' ')}>
             {isListening
-              ? <><span className="live-dot" />AO VIVO</>
+              ? <><span className="live-dot" />{t('live')}</>
               : isProcessing
               ? <><Loader2 size={9} className="animate-spin" />PROC...</>
               : <><span className="w-1.5 h-1.5 rounded-full bg-white/30" />OFF</>}
@@ -431,14 +505,14 @@ export default function FloatingBar() {
           <button
             onClick={() => windowAPI.show('settings')}
             className="w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-white hover:bg-white/10 transition-colors"
-            title="Configurações"
+            title={t('settings')}
           >
             <Settings size={12} />
           </button>
           <button
             onClick={() => windowAPI.hide()}
             className="w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-[#ffb3ad] hover:bg-white/10 transition-colors"
-            title="Esconder"
+            title={t('hide')}
           >
             <X size={12} />
           </button>
@@ -470,7 +544,7 @@ export default function FloatingBar() {
 
       {/* ── Bottom bar ─────────────────────────────────────────── */}
       <div
-        className="shrink-0 border-t border-white/[0.08] px-3 py-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)_minmax(0,0.9fr)] gap-2 bg-white/[0.03]"
+        className="shrink-0 border-t border-white/[0.08] px-3 py-3 grid grid-cols-[92px_minmax(162px,1fr)_92px] gap-2 bg-white/[0.03]"
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         <button
@@ -486,53 +560,55 @@ export default function FloatingBar() {
           ].join(' ')}
         >
           {isProcessing
-            ? <><Loader2 size={12} className="animate-spin shrink-0" /><span className="truncate">Processando</span></>
+            ? <><Loader2 size={12} className="animate-spin shrink-0" /><span className="truncate">{t('processing')}</span></>
             : isListening
-            ? <><MicOff size={12} className="shrink-0" /><span className="truncate">Parar</span></>
-            : <><Mic size={12} className="shrink-0" /><span className="truncate">Escutar</span></>}
+            ? <><MicOff size={12} className="shrink-0" /><span className="truncate">{t('stop')}</span></>
+            : <><Mic size={12} className="shrink-0" /><span className="truncate">{t('listenStart')}</span></>}
         </button>
 
         {/* Auto-practice toggle */}
         <button
           onClick={toggleAuto}
           className={[
-            'pill-button w-full min-w-0 px-2.5 py-2 text-[12px] transition-all border overflow-hidden',
+            'pill-button w-full min-w-0 px-2.5 py-2 text-[11.5px] transition-all border overflow-hidden',
             autoMode
               ? 'bg-warning/20 text-[#f4cf93] border-warning/40'
               : 'bg-white/5 text-white/65 border-white/[0.10] hover:text-white hover:bg-white/10',
           ].join(' ')}
-          title="Pausa o vídeo a cada frase para você treinar"
+          title={t('autoPracticeTitle')}
         >
           <Zap size={12} className={['shrink-0', autoMode ? 'fill-warning' : ''].join(' ')} />
-          <span className="truncate">Auto {autoMode ? 'ON' : 'OFF'}</span>
+          <span className="whitespace-nowrap">{t('autoPractice')} {autoMode ? 'ON' : 'OFF'}</span>
         </button>
 
         <button
           onClick={() => windowAPI.show('tutor-board')}
           className="pill-button w-full min-w-0 px-2.5 py-2 text-[12px] bg-white/10 text-white hover:bg-white/15 transition-all border border-white/[0.10] overflow-hidden"
         >
-          <span className="truncate">Analisar</span>
+          <span className="truncate">{t('analyze')}</span>
         </button>
       </div>
     </div>
+    </UiLangProvider>
   )
 }
 
 // ── Audio level meter (shows live peak vs the speech gate) ────────────────────
 function AudioMeter({ level, gate }: { level: number; gate: number }) {
+  const t = useT()
   const pct      = Math.min(100, (level / 80) * 100)   // 80 ≈ loud
   const gatePct  = Math.min(100, (gate / 80) * 100)
   const overGate = level >= gate
   return (
     <div className="shrink-0 px-3.5 py-2 border-t border-white/[0.05] flex items-center gap-2">
-      <span className="text-[9px] text-white/35 uppercase tracking-wider w-8">Nível</span>
+      <span className="text-[9px] text-white/35 uppercase tracking-wider w-8">{t('level')}</span>
       <div className="relative flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
         <div
           className={['h-full transition-all duration-75', overGate ? 'bg-success' : 'bg-white/35'].join(' ')}
           style={{ width: `${pct}%` }}
         />
         {/* gate marker */}
-        <div className="absolute top-0 bottom-0 w-px bg-warning" style={{ left: `${gatePct}%` }} title="Limiar de fala" />
+        <div className="absolute top-0 bottom-0 w-px bg-warning" style={{ left: `${gatePct}%` }} title={t('speechThreshold')} />
       </div>
       <span className="text-[9px] font-mono text-white/45 w-6 text-right">{level}</span>
     </div>
@@ -547,6 +623,7 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
   originalCues?: WordCue[]
   onDone: () => void
 }) {
+  const t = useT()
   const { state, countdown, start, stop, cancel } = usePractice()
   const [result, setResult] = useState<{ diff: DiffToken[]; score: number; audioUrl: string } | null>(null)
 
@@ -579,7 +656,7 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
     <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col">
       <div className="flex items-center gap-1.5 mb-2 text-[#f4cf93]">
         <Zap size={12} className="fill-warning" />
-        <span className="text-[10px] font-semibold uppercase tracking-wider">Repita a frase</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider">{t('repeatSentence')}</span>
       </div>
 
       {/* Target sentence */}
@@ -590,7 +667,7 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
             <button
               onClick={() => playClip(originalAudioUrl)}
               className="flex items-center gap-1 text-[11px] text-white/65 hover:text-white transition-colors"
-              title="Ouvir o áudio original da cena"
+              title={t('listenOriginalScene')}
             >
               <Volume2 size={11} /> Original
             </button>
@@ -598,7 +675,7 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
           <button
             onClick={() => speakViaTts(sentence, lang)}
             className="flex items-center gap-1 text-[11px] text-white/55 hover:text-white transition-colors"
-            title="Ouvir voz sintetizada (clara/lenta)"
+            title={t('listenTtsClear')}
           >
             <Volume2 size={11} /> TTS
           </button>
@@ -613,20 +690,20 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
               'text-sm font-bold',
               result.score >= 80 ? 'text-success' : result.score >= 50 ? 'text-[#f4cf93]' : 'text-[#ffb3ad]',
             ].join(' ')}>{result.score}%</span>
-            <span className="text-xs text-white/50">de precisão</span>
+            <span className="text-xs text-white/50">{t('accuracy')}</span>
             <button
               onClick={() => playClip(result.audioUrl)}
               className="ml-auto flex items-center gap-1 text-[11px] text-white/65 hover:text-white transition-colors"
-              title="Ouvir minha gravação"
+              title={t('listenMyRecording')}
             >
-              <Volume2 size={11} /> Minha voz
+              <Volume2 size={11} /> {t('myVoice')}
             </button>
           </div>
           <DiffView diff={result.diff} />
         </>
       ) : (
         <p className="text-xs text-white/55 italic mb-2">
-          {counting ? `Gravando em ${countdown}...` : recording ? 'Gravando - fale agora' : busy ? 'Avaliando...' : 'Clique em Gravar quando estiver pronto.'}
+          {counting ? `${t('recordingIn')} ${countdown}...` : recording ? t('recordingNow') : busy ? t('evaluating') : t('clickRecordWhenReady')}
         </p>
       )}
 
@@ -634,15 +711,15 @@ function AutoPractice({ sentence, lang, originalAudioUrl, originalCues, onDone }
       <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
         {recording ? (
           <button onClick={stop} className="flex-1 bg-danger text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-danger/90">
-            Parar
+            {t('stop')}
           </button>
         ) : (
           <button onClick={run} disabled={counting || busy} className="flex-1 bg-warning/20 text-[#f4cf93] border border-warning/40 py-2.5 rounded-xl text-xs font-semibold hover:bg-warning/30 disabled:opacity-40">
-            <Mic size={12} className="inline mr-1" />{result ? 'Repetir' : 'Gravar'}
+            <Mic size={12} className="inline mr-1" />{result ? t('repeatAgain') : t('record')}
           </button>
         )}
         <button onClick={finish} className="flex-1 bg-white/10 text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-white/15">
-          {result ? 'Continuar' : 'Pular'}
+          {result ? t('continueWord') : t('skip')}
         </button>
       </div>
     </div>
@@ -679,6 +756,7 @@ function TranscriptList({ lines, currentTranscript, error }: {
   currentTranscript: string | null
   error: string | null
 }) {
+  const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -694,9 +772,9 @@ function TranscriptList({ lines, currentTranscript, error }: {
       )}
 
       {lines.length === 0 && !currentTranscript && !error && (
-        <div className="flex flex-col items-center justify-center h-full gap-2 text-white/40 pt-16">
-          <Mic size={24} className="opacity-30" />
-          <p className="text-xs">Aperte Escutar e dê play no vídeo.</p>
+        <div className="flex flex-col items-center justify-center h-full gap-1.5 text-white/40 py-3">
+          <Mic size={20} className="opacity-30" />
+          <p className="text-xs">{t('pressListenHint')}</p>
         </div>
       )}
 
@@ -705,14 +783,14 @@ function TranscriptList({ lines, currentTranscript, error }: {
           key={i}
           className="fade-up rounded-xl bg-white/[0.05] border border-white/[0.06] px-3 py-2.5"
         >
-          <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1 font-semibold">Áudio</p>
+          <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1 font-semibold">{t('audioLabel')}</p>
           <p className="text-sm text-white/90 leading-relaxed">{line}</p>
         </div>
       ))}
 
       {currentTranscript && (
         <div className="rounded-xl border border-primary/35 bg-primary/10 px-3 py-2.5">
-          <p className="text-[10px] text-white/45 uppercase tracking-wider mb-1 font-semibold">Capturando...</p>
+          <p className="text-[10px] text-white/45 uppercase tracking-wider mb-1 font-semibold">{t('capturing')}</p>
           <p className="text-sm text-white/70 leading-relaxed">{currentTranscript}</p>
         </div>
       )}
@@ -724,6 +802,7 @@ function TranscriptList({ lines, currentTranscript, error }: {
 
 // ── Session feed (my practice attempts) ───────────────────────────────────────
 function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
+  const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -734,8 +813,8 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
     return (
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 text-white/40">
         <User size={24} className="opacity-30" />
-        <p className="text-xs px-6 text-center">Suas falas de prática aparecem aqui.</p>
-        <p className="text-[10px] opacity-60 px-6 text-center">Use "Praticar" no Tutor Board para gravar e comparar.</p>
+        <p className="text-xs px-6 text-center">{t('practiceSpeechHere')}</p>
+        <p className="text-[10px] opacity-60 px-6 text-center">{t('practiceHint')}</p>
       </div>
     )
   }
@@ -746,30 +825,30 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
         <div key={i} className="rounded-xl bg-white/[0.05] border border-white/[0.06] px-3 py-2.5">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Tentativa #{i + 1}</span>
+              <span className="text-[11px] text-white/45 uppercase tracking-wider font-semibold">{t('attempt')} #{i + 1}</span>
               {a.audioUrl && (
                 <button
                   onClick={() => playClip(a.audioUrl)}
-                  className="flex items-center gap-1 text-[10px] text-white/65 hover:text-white transition-colors"
-                  title="Ouvir minha gravação"
+                  className="flex items-center gap-1 text-[11px] text-white/70 hover:text-white transition-colors"
+                  title={t('listenMyRecording')}
                 >
-                  <Volume2 size={11} /> Ouvir
+                  <Volume2 size={12} /> {t('listen')}
                 </button>
               )}
             </div>
             <span className={[
-              'text-xs font-bold',
+              'text-sm font-bold',
               a.score >= 80 ? 'text-success' : a.score >= 50 ? 'text-[#f4cf93]' : 'text-[#ffb3ad]',
             ].join(' ')}>{a.score}%</span>
           </div>
 
           {/* Original */}
-          <p className="text-[10px] text-white/35 mb-0.5">Original</p>
-          <p className="text-xs text-white/70 mb-1.5 leading-relaxed">{a.original}</p>
+          <p className="text-[11px] text-white/40 mb-1 font-semibold">Original</p>
+          <p className="text-[13px] text-white/75 mb-2 leading-[1.45]">{a.original}</p>
 
           {/* Full raw speech (nothing hidden) */}
-          <p className="text-[10px] text-white/35 mb-0.5">Você falou</p>
-          <p className="text-xs text-white/90 mb-1.5 leading-relaxed">{a.spoken}</p>
+          <p className="text-[11px] text-white/40 mb-1 font-semibold">{t('youSaid')}</p>
+          <p className="text-[13px] text-white/92 mb-2 leading-[1.45]">{a.spoken}</p>
 
           {/* Word-by-word diff (ok / missing / extra) */}
           <DiffView diff={a.diff} />

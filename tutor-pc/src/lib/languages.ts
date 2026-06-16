@@ -7,10 +7,23 @@ const NAMES: Record<string, string> = {
   pl: 'Polonês', vi: 'Vietnamita', id: 'Indonésio',
 }
 
+const NAMES_EN: Record<string, string> = {
+  en: 'English', es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German',
+  it: 'Italian', ko: 'Korean', ja: 'Japanese', zh: 'Chinese', ru: 'Russian',
+  ar: 'Arabic', hi: 'Hindi', th: 'Thai', nl: 'Dutch', tr: 'Turkish',
+  pl: 'Polish', vi: 'Vietnamese', id: 'Indonesian',
+}
+
 const FLAGS: Record<string, string> = {
   en: '🇬🇧', es: '🇪🇸', pt: '🇧🇷', fr: '🇫🇷', de: '🇩🇪', it: '🇮🇹',
   ko: '🇰🇷', ja: '🇯🇵', zh: '🇨🇳', ru: '🇷🇺', ar: '🇸🇦', hi: '🇮🇳',
   th: '🇹🇭', nl: '🇳🇱', tr: '🇹🇷', pl: '🇵🇱', vi: '🇻🇳', id: '🇮🇩',
+}
+
+const FLAG_COUNTRIES: Record<string, string> = {
+  en: 'gb', es: 'es', pt: 'br', fr: 'fr', de: 'de', it: 'it',
+  ko: 'kr', ja: 'jp', zh: 'cn', ru: 'ru', ar: 'sa', hi: 'in',
+  th: 'th', nl: 'nl', tr: 'tr', pl: 'pl', vi: 'vn', id: 'id',
 }
 
 /** Base language code (zh-CN → zh, en-US → en). */
@@ -24,9 +37,21 @@ export function languageName(lang: string): string {
   return NAMES[baseLang(lang)] ?? lang.toUpperCase()
 }
 
+/** Human name localized for the app UI language. */
+export function languageNameFor(lang: string, uiLang: 'pt' | 'en'): string {
+  if (!lang || lang === 'unknown') return uiLang === 'en' ? 'Other' : 'Outro'
+  const base = baseLang(lang)
+  return (uiLang === 'en' ? NAMES_EN[base] : NAMES[base]) ?? lang.toUpperCase()
+}
+
 /** Flag emoji for a language code, or a generic globe. */
 export function languageFlag(lang: string): string {
   return FLAGS[baseLang(lang)] ?? '🌐'
+}
+
+/** Lowercase ISO 3166-1 alpha-2 country code for CSS flag images (e.g. "gb", "br"). */
+export function languageFlagCountry(lang: string): string | null {
+  return FLAG_COUNTRIES[baseLang(lang)] ?? null
 }
 
 /** "🇰🇷 Coreano" */

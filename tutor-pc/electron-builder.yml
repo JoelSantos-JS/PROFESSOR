@@ -1,6 +1,6 @@
-appId: com.evolution.tutor-pc
-productName: Tutor PC
-copyright: Copyright © 2025 Evolution
+appId: com.capta.app
+productName: Capta
+copyright: Copyright © 2025 Capta
 
 directories:
   output: release

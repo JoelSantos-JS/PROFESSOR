@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound, AlertTriangle, X } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
 import { settingsAPI, credentialsAPI } from '../services/electron'
-import type { AppSettings, ProviderId, ProviderStatus } from '../types'
+import { validateApiKey, pickActiveProvider } from '../lib/apiKeyValidation'
+import { NATIVE_LANGUAGES } from '../lib/nativeLang'
+import { contentLanguageOptions, normalizeContentLanguage } from '../lib/contentLanguages'
+import { APP_LANGUAGES, appLanguage, uiText } from '../lib/uiLanguage'
+import type { AppSettings, ProviderId, ProviderStatus, TtsProviderId } from '../types'
+
+interface TestState { testing?: boolean; ok?: boolean; msg?: string }
 
 const PROVIDER_META: Record<ProviderId, {
   name: string
@@ -36,13 +42,29 @@ const PROVIDER_META: Record<ProviderId, {
   },
 }
 
-const SHORTCUTS = [
-  { key: 'Ctrl+Alt+L', desc: 'Iniciar / parar escuta' },
-  { key: 'Ctrl+Alt+D', desc: 'Abrir Dashboard' },
-  { key: 'Ctrl+Alt+S', desc: 'Abrir Configurações' },
-  { key: 'Ctrl+Alt+B', desc: 'Abrir Tutor Board' },
-  { key: 'Ctrl+Alt+Space', desc: 'Pausar / retomar player' },
+const TTS_PROVIDERS: Array<{ id: TtsProviderId; name: string; note: string }> = [
+  { id: 'kokoro', name: 'Kokoro local', note: 'voz local em ingles' },
+  { id: 'edge', name: 'Edge online', note: 'fallback multi-idioma' },
 ]
+
+// [id, nome, região, gênero] — o rótulo (com o gênero traduzido) é montado em runtime via uiLang.
+const KOKORO_VOICES = [
+  ['af_heart', 'Heart', 'US', 'f'],
+  ['af_bella', 'Bella', 'US', 'f'],
+  ['af_nicole', 'Nicole', 'US', 'f'],
+  ['af_sarah', 'Sarah', 'US', 'f'],
+  ['am_puck', 'Puck', 'US', 'm'],
+  ['am_fenrir', 'Fenrir', 'US', 'm'],
+  ['bf_emma', 'Emma', 'UK', 'f'],
+  ['bm_fable', 'Fable', 'UK', 'm'],
+] as const
+
+function kokoroVoiceLabel(name: string, region: string, gender: string, uiLang: 'pt' | 'en'): string {
+  const g = uiLang === 'en'
+    ? (gender === 'f' ? 'female' : 'male')
+    : (gender === 'f' ? 'feminina' : 'masculina')
+  return `${name} - ${region} ${g}`
+}
 
 export default function Settings() {
   const [settings, setSettings] = useState<Partial<AppSettings>>({})
@@ -53,8 +75,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [testResult, setTestResult] = useState<string | null>(null)
-  const [testingProvider, setTestingProvider] = useState<ProviderId | null>(null)
+  const [testState, setTestState] = useState<Partial<Record<ProviderId, TestState>>>({})
 
   useEffect(() => {
     settingsAPI.getAll().then(setSettings)
@@ -63,6 +84,22 @@ export default function Settings() {
 
   const isConfigured = (id: ProviderId) =>
     providers.find(p => p.id === id)?.configured ?? false
+
+  // Validação ao vivo do que está sendo digitado (só dica; não bloqueia a digitação).
+  const liveValidation = editing && keyInput ? validateApiKey(editing, keyInput) : null
+
+  // Garante que os providers ATIVOS apontem para chaves configuradas (auto-seleção).
+  const ensureActiveProviders = async (configuredIds: ProviderId[], current: Partial<AppSettings>) => {
+    const ai = pickActiveProvider(configuredIds, current.activeAiProvider)
+    const tx = pickActiveProvider(configuredIds, current.activeTranscriptionProvider, tid => PROVIDER_META[tid].supportsTranscription)
+    const patch: Partial<AppSettings> = {}
+    if (ai && ai !== current.activeAiProvider) patch.activeAiProvider = ai
+    if (tx && tx !== current.activeTranscriptionProvider) patch.activeTranscriptionProvider = tx
+    if (Object.keys(patch).length === 0) return
+    setSettings(prev => ({ ...prev, ...patch }))
+    if (patch.activeAiProvider) await settingsAPI.set('activeAiProvider', patch.activeAiProvider)
+    if (patch.activeTranscriptionProvider) await settingsAPI.set('activeTranscriptionProvider', patch.activeTranscriptionProvider)
+  }
 
   const startEdit = async (id: ProviderId) => {
     const existing = await credentialsAPI.get(id)
@@ -73,9 +110,13 @@ export default function Settings() {
 
   const saveKey = async () => {
     if (!editing) return
+    const provider = editing
+    const v = validateApiKey(provider, keyInput)
+    if (!v.ok) { setSaveError(v.message ?? 'Chave inválida'); return }   // bloqueia só em erro
+
     setSaving(true)
     setSaveError(null)
-    const result = await credentialsAPI.set(editing, keyInput)
+    const result = await credentialsAPI.set(provider, v.normalized)      // salva já normalizada
     if (result && !result.ok) {
       setSaveError(result.error ?? 'Erro desconhecido ao salvar')
       setSaving(false)
@@ -87,13 +128,23 @@ export default function Settings() {
     setKeyInput('')
     setSaving(false)
     flash()
+
+    // Auto-seleciona o provider ativo se ainda não houver um configurado.
+    const configuredIds = updated.filter(p => p.configured).map(p => p.id)
+    await ensureActiveProviders(configuredIds, settings)
+    // Auto-testa a chave recém-salva (feedback imediato sem clique extra).
+    testProvider(provider)
   }
 
   const removeKey = async (id: ProviderId) => {
     await credentialsAPI.remove(id)
-    setProviders(prev => prev.map(p => p.id === id ? { ...p, configured: false } : p))
+    const updated = providers.map(p => p.id === id ? { ...p, configured: false } : p)
+    setProviders(updated)
+    setTestState(prev => ({ ...prev, [id]: undefined }))
     if (editing === id) setEditing(null)
     flash()
+    // Reaponta os providers ativos para chaves ainda válidas.
+    await ensureActiveProviders(updated.filter(p => p.configured).map(p => p.id), settings)
   }
 
   const updateSetting = async (key: keyof AppSettings, value: string) => {
@@ -103,20 +154,36 @@ export default function Settings() {
   }
 
   const testProvider = async (id: ProviderId) => {
-    setTestingProvider(id)
-    setTestResult(null)
+    setTestState(prev => ({ ...prev, [id]: { testing: true } }))
     const result = await credentialsAPI.test(id)
-    setTestResult(result.ok ? (result.message ?? 'OK') : (result.error ?? 'Falha no teste'))
-    setTestingProvider(null)
+    setTestState(prev => ({
+      ...prev,
+      [id]: { testing: false, ok: result.ok, msg: result.ok ? (result.message ?? 'Chave válida ✓') : (result.error ?? 'Falha no teste') },
+    }))
   }
 
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1500) }
 
   const configuredProviders = providers.filter(p => p.configured)
+  const uiLang = appLanguage(settings.appLanguage as string | undefined)
+  const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
+  const localizedShortcuts = [
+    { key: 'Ctrl+Alt+L', desc: uiLang === 'en' ? 'Start / stop listening' : 'Iniciar / parar escuta' },
+    { key: 'Ctrl+Alt+D', desc: uiLang === 'en' ? 'Open Dashboard' : 'Abrir Dashboard' },
+    { key: 'Ctrl+Alt+S', desc: uiLang === 'en' ? 'Open Settings' : 'Abrir Configuracoes' },
+    { key: 'Ctrl+Alt+B', desc: uiLang === 'en' ? 'Open Tutor Board' : 'Abrir Tutor Board' },
+    { key: 'Ctrl+Alt+Space', desc: uiLang === 'en' ? 'Pause / resume player' : 'Pausar / retomar player' },
+  ]
+  const ttsProviders = TTS_PROVIDERS.map(provider => ({
+    ...provider,
+    note: uiLang === 'en'
+      ? provider.id === 'kokoro' ? 'local English voice' : 'multi-language fallback'
+      : provider.note,
+  }))
 
   return (
     <div className="flex flex-col h-screen app-paper text-foreground">
-      <TitleBar title="Configurações" showMinimize={false} />
+      <TitleBar title={t('settings')} showMinimize={false} />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
@@ -124,34 +191,19 @@ export default function Settings() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="label-eyebrow">
-              Provedores de IA — Sua chave, seus tokens
+              {t('aiProviders')}
             </h2>
             <div className="flex items-center gap-2">
               {saved && (
                 <span className="flex items-center gap-1 text-xs text-success">
-                  <Check size={11} /> Salvo
+                  <Check size={11} /> {t('saved')}
                 </span>
               )}
               {saveError && (
-                <span className="text-xs text-danger truncate max-w-48" title={saveError}>
-                  Erro: {saveError}
+                <span className="text-xs text-danger truncate max-w-64" title={saveError}>
+                  {saveError}
                 </span>
               )}
-              {testResult && (
-                <span className="text-xs text-muted truncate max-w-72" title={testResult}>
-                  {testResult}
-                </span>
-              )}
-              <button
-                onClick={async () => {
-                  const info = await credentialsAPI.debug()
-                  alert(JSON.stringify(info, null, 2))
-                }}
-                className="text-xs text-muted hover:text-foreground transition-colors"
-                title="Debug: ver estado salvo no disco"
-              >
-                debug
-              </button>
             </div>
           </div>
 
@@ -177,7 +229,7 @@ export default function Settings() {
                     <div className="flex-1 min-w-0">
                       <span className="text-sm font-medium text-foreground">{meta.name}</span>
                       {configured && (
-                        <span className="ml-2 text-xs text-success">configurado</span>
+                        <span className="ml-2 text-xs text-success">{t('configured')}</span>
                       )}
                     </div>
                     <a
@@ -185,25 +237,25 @@ export default function Settings() {
                       target="_blank"
                       rel="noreferrer"
                       className="text-muted hover:text-foreground transition-colors"
-                      title="Obter chave"
+                      title={t('getKey')}
                     >
                       <ExternalLink size={13} />
                     </a>
                     {configured && !isEditing && (
                       <button
                         onClick={() => testProvider(id)}
-                        disabled={testingProvider === id}
+                        disabled={testState[id]?.testing}
                         className="text-xs px-3 py-1.5 rounded-full font-bold transition-colors text-primary bg-primary/10 hover:bg-primary/15 disabled:opacity-50"
-                        title="Testar esta chave no provider"
+                        title={t('test')}
                       >
-                        {testingProvider === id ? 'Testando...' : 'Testar'}
+                        {testState[id]?.testing ? t('testing') : t('test')}
                       </button>
                     )}
                     {configured && !isEditing && (
                       <button
                         onClick={() => removeKey(id)}
                         className="text-muted hover:text-danger transition-colors ml-1"
-                        title="Remover chave"
+                        title={t('removeKey')}
                       >
                         <Trash2 size={13} />
                       </button>
@@ -219,39 +271,69 @@ export default function Settings() {
                             : 'text-primary border border-primary/40 hover:bg-primary/10',
                       ].join(' ')}
                     >
-                      {isEditing ? 'Cancelar' : configured ? 'Editar' : '+ Adicionar'}
+                      {isEditing ? t('cancel') : configured ? t('edit') : t('add')}
                     </button>
                   </div>
 
                   {/* Inline key input */}
                   {isEditing && (
-                    <div className="px-4 pb-3 flex gap-2">
-                      <div className="flex-1 flex items-center bg-white border border-border rounded-xl overflow-hidden focus-within:border-primary transition-colors">
-                        <input
-                          type={showKey ? 'text' : 'password'}
-                          value={keyInput}
-                          onChange={e => setKeyInput(e.target.value)}
-                          placeholder={meta.placeholder}
-                          autoFocus
-                          onKeyDown={e => e.key === 'Enter' && saveKey()}
-                          className="flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted/40 outline-none font-mono"
-                        />
+                    <div className="px-4 pb-3">
+                      <div className="flex gap-2">
+                        <div className={[
+                          'flex-1 flex items-center bg-white border rounded-xl overflow-hidden transition-colors',
+                          liveValidation?.level === 'error' ? 'border-danger'
+                            : liveValidation?.level === 'warn' ? 'border-warning'
+                            : 'border-border focus-within:border-primary',
+                        ].join(' ')}>
+                          <input
+                            type={showKey ? 'text' : 'password'}
+                            value={keyInput}
+                            onChange={e => setKeyInput(e.target.value)}
+                            placeholder={meta.placeholder}
+                            autoFocus
+                            onKeyDown={e => e.key === 'Enter' && saveKey()}
+                            className="flex-1 bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted/40 outline-none font-mono"
+                          />
+                          <button
+                            onClick={() => setShowKey(s => !s)}
+                            className="px-3 py-2 text-muted hover:text-foreground transition-colors"
+                            type="button"
+                          >
+                            {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
                         <button
-                          onClick={() => setShowKey(s => !s)}
-                          className="px-3 py-2 text-muted hover:text-foreground transition-colors"
-                          type="button"
+                          onClick={saveKey}
+                          disabled={saving || !keyInput.trim() || liveValidation?.level === 'error'}
+                          className="pill-button pill-primary px-4 py-2 disabled:opacity-40 text-sm"
                         >
-                          {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                          <Check size={13} />
+                          {t('save')}
                         </button>
                       </div>
-                      <button
-                        onClick={saveKey}
-                        disabled={saving || !keyInput.trim()}
-                        className="pill-button pill-primary px-4 py-2 disabled:opacity-40 text-sm"
-                      >
-                        <Check size={13} />
-                        Salvar
-                      </button>
+                      {/* Dica de validação de formato ao vivo */}
+                      {liveValidation?.message && (
+                        <p className={[
+                          'flex items-center gap-1.5 text-[11px] mt-1.5',
+                          liveValidation.level === 'error' ? 'text-danger' : 'text-warning',
+                        ].join(' ')}>
+                          <AlertTriangle size={11} className="shrink-0" />
+                          {liveValidation.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resultado do teste da chave (auto após salvar, ou ao clicar Testar) */}
+                  {!isEditing && testState[id] && !testState[id]!.testing && testState[id]!.msg && (
+                    <div className="px-4 pb-3 -mt-1">
+                      <p className={[
+                        'flex items-center gap-1.5 text-[11px]',
+                        testState[id]!.ok ? 'text-success' : 'text-danger',
+                      ].join(' ')}>
+                        {testState[id]!.ok ? <Check size={11} className="shrink-0" /> : <X size={11} className="shrink-0" />}
+                        <span className="truncate" title={testState[id]!.msg}>{testState[id]!.msg}</span>
+                      </p>
                     </div>
                   )}
                 </div>
@@ -263,44 +345,149 @@ export default function Settings() {
         {/* Active providers */}
         <section>
           <h2 className="label-eyebrow mb-3">
-            Provider Ativo
+            {t('activeProvider')}
           </h2>
           <div className="paper-card divide-y divide-border">
             <ProviderSelect
-              label="Tutor AI"
+              label={t('tutorAi')}
               value={(settings.activeAiProvider as ProviderId) ?? 'gemini'}
               options={configuredProviders.map(p => p.id)}
+              emptyLabel={t('noneConfigured')}
               onChange={v => updateSetting('activeAiProvider', v)}
             />
             <ProviderSelect
-              label="Transcrição"
+              label={t('transcription')}
               value={(settings.activeTranscriptionProvider as ProviderId) ?? 'gemini'}
               options={configuredProviders
                 .filter(p => PROVIDER_META[p.id].supportsTranscription)
                 .map(p => p.id)}
+              emptyLabel={t('noneConfigured')}
               onChange={v => updateSetting('activeTranscriptionProvider', v)}
             />
           </div>
           {configuredProviders.length === 0 && (
             <p className="text-xs text-muted mt-2 px-1">
-              Configure ao menos um provider acima para habilitar as funções.
+              {t('configureProvider')}
             </p>
           )}
+        </section>
+
+        {/* Idioma da interface do app */}
+        <section>
+          <h2 className="label-eyebrow mb-3">{t('appLanguage')}</h2>
+          <div className="paper-card divide-y divide-border">
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <span className="text-sm text-muted">{t('appLanguage')}</span>
+                <p className="text-[11px] text-muted/70 mt-0.5">{t('appLanguageNote')}</p>
+              </div>
+              <select
+                aria-label={t('appLanguage')}
+                value={uiLang}
+                onChange={e => updateSetting('appLanguage', e.target.value)}
+                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer"
+              >
+                {APP_LANGUAGES.map(l => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
+
+        {/* Idioma do usuário (no qual as explicações/traduções aparecem) */}
+        <section>
+          <h2 className="label-eyebrow mb-3">{t('yourLanguage')}</h2>
+          <div className="paper-card divide-y divide-border">
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <span className="text-sm text-muted">{t('explanationsLanguage')}</span>
+                <p className="text-[11px] text-muted/70 mt-0.5">{t('explanationsNote')}</p>
+              </div>
+              <select
+                aria-label={t('yourLanguage')}
+                value={(settings.nativeLanguage as string)?.split('-')[0] ?? 'pt'}
+                onChange={e => updateSetting('nativeLanguage', e.target.value)}
+                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer"
+              >
+                {NATIVE_LANGUAGES.map(l => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        {/* Idioma do conteúdo (transcrição) */}
+        <section>
+          <h2 className="label-eyebrow mb-3">{t('contentLanguage')}</h2>
+          <div className="paper-card divide-y divide-border">
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <span className="text-sm text-muted">{t('contentLanguageLabel')}</span>
+                <p className="text-[11px] text-muted/70 mt-0.5">{t('contentLanguageNote')}</p>
+              </div>
+              <select
+                aria-label={t('contentLanguage')}
+                value={normalizeContentLanguage(settings.contentLanguage as string)}
+                onChange={e => updateSetting('contentLanguage', e.target.value)}
+                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer max-w-[200px]"
+              >
+                {contentLanguageOptions(uiLang).map(o => (
+                  <option key={o.code} value={o.code}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
+        {/* TTS */}
+        <section>
+          <h2 className="label-eyebrow mb-3">
+            {t('ttsVoice')}
+          </h2>
+          <div className="paper-card divide-y divide-border">
+            <TtsSelect
+              label={t('engine')}
+              value={(settings.activeTtsProvider as TtsProviderId) ?? 'kokoro'}
+              options={ttsProviders}
+              onChange={v => updateSetting('activeTtsProvider', v)}
+            />
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <span className="text-sm text-muted">{t('kokoroVoice')}</span>
+                <p className="text-[11px] text-muted/70 mt-0.5">{t('kokoroNote')}</p>
+              </div>
+              <select
+                value={(settings.ttsVoice as string) ?? 'af_heart'}
+                onChange={e => updateSetting('ttsVoice', e.target.value)}
+                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer max-w-44"
+              >
+                {KOKORO_VOICES.map(([id, name, region, gender]) => (
+                  <option key={id} value={id}>{kokoroVoiceLabel(name, region, gender, uiLang)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-muted mt-2 px-1">
+            {t('kokoroFirstUse')}
+          </p>
         </section>
 
 
         {/* Shortcuts */}
         <section>
           <h2 className="label-eyebrow mb-3">
-            Atalhos globais
+            {t('shortcuts')}
           </h2>
           <div className="paper-card overflow-hidden">
-            {SHORTCUTS.map(({ key, desc }, i) => (
+            {localizedShortcuts.map(({ key, desc }, i) => (
               <div
                 key={key}
                 className={[
                   'flex items-center justify-between px-4 py-2.5 text-sm',
-                  i < SHORTCUTS.length - 1 ? 'border-b border-border' : '',
+                  i < localizedShortcuts.length - 1 ? 'border-b border-border' : '',
                 ].join(' ')}
               >
                 <span className="text-muted">{desc}</span>
@@ -314,11 +501,13 @@ export default function Settings() {
 
         {/* About */}
         <section>
-          <h2 className="label-eyebrow mb-3">Sobre</h2>
+          <h2 className="label-eyebrow mb-3">{t('about')}</h2>
           <div className="paper-card p-4">
-            <p className="display-title text-xl text-foreground mb-1">PROFESSOR</p>
+            <p className="display-title text-xl text-foreground mb-1">Capta</p>
             <p className="text-xs text-muted">
-              v0.1.0 — M0 Shell · Seu professor flutuante de inglês para qualquer áudio do PC.
+              {uiLang === 'en'
+                ? 'v0.1.0 - M0 Shell - Your floating English tutor for any PC audio.'
+                : 'v0.1.0 - M0 Shell - Seu professor flutuante de ingles para qualquer audio do PC.'}
             </p>
           </div>
         </section>
@@ -331,18 +520,20 @@ function ProviderSelect({
   label,
   value,
   options,
+  emptyLabel,
   onChange,
 }: {
   label: string
   value: ProviderId
   options: ProviderId[]
+  emptyLabel: string
   onChange: (v: string) => void
 }) {
   return (
     <div className="flex items-center justify-between px-4 py-3">
       <span className="text-sm text-muted">{label}</span>
       {options.length === 0 ? (
-        <span className="text-xs text-muted/60">nenhum configurado</span>
+        <span className="text-xs text-muted/60">{emptyLabel}</span>
       ) : (
         <select
           value={value}
@@ -354,6 +545,40 @@ function ProviderSelect({
           ))}
         </select>
       )}
+    </div>
+  )
+}
+
+function TtsSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: TtsProviderId
+  options: Array<{ id: TtsProviderId; name: string; note: string }>
+  onChange: (v: string) => void
+}) {
+  const selected = options.find(option => option.id === value)
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3 gap-3">
+      <div className="min-w-0">
+        <span className="text-sm text-muted">{label}</span>
+        {selected && (
+          <p className="text-[11px] text-muted/70 mt-0.5">{selected.note}</p>
+        )}
+      </div>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer"
+      >
+        {options.map(option => (
+          <option key={option.id} value={option.id}>{option.name}</option>
+        ))}
+      </select>
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { ttsAPI } from '../services/electron'
 import { playClip, playSlice } from '../lib/playClip'
 import { findWordCue } from '../lib/tts'
 import { missingWords } from '../lib/text'
+import { useT } from '../lib/uiLangContext'
 import type { SessionAttempt } from '../types'
 
 async function speakWord(word: string, lang: string) {
@@ -16,6 +17,7 @@ async function speakWord(word: string, lang: string) {
  * so they can fix their speaking word by word.
  */
 export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
+  const t = useT()
   const missed = missingWords(attempt.diff)
   if (missed.length === 0) return null
 
@@ -24,7 +26,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
       <div className="flex items-center gap-1.5 mb-2">
         <AlertTriangle size={12} className="text-danger" />
         <span className="text-[10px] font-semibold uppercase tracking-wider text-danger">
-          Pronúncia a corrigir — {missed.length} {missed.length === 1 ? 'palavra' : 'palavras'}
+          {t('pronToFix')} {missed.length} {t(missed.length === 1 ? 'wordSingular' : 'wordsPlural')}
         </span>
       </div>
 
@@ -41,7 +43,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
                 <button
                   onClick={() => attempt.originalAudioUrl && playSlice(attempt.originalAudioUrl, cue.start, cue.end)}
                   className="flex items-center justify-center w-5 h-5 rounded text-success hover:bg-success/15 transition-colors"
-                  title="Ouvir a pronúncia original (voz da cena)"
+                  title={t('listenOriginalSceneVoice')}
                 >
                   <Volume2 size={11} />
                 </button>
@@ -49,7 +51,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
               <button
                 onClick={() => speakWord(word, attempt.lang)}
                 className="flex items-center justify-center w-5 h-5 rounded text-primary/80 hover:bg-primary/15 transition-colors"
-                title="Ouvir pronúncia correta (TTS)"
+                title={t('listenCorrectTts')}
               >
                 <Volume2 size={11} />
               </button>
@@ -59,7 +61,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
       </div>
 
       <p className="text-[10px] text-muted/50 mt-2 leading-snug">
-        🟢 voz original · 🔵 TTS. Repita cada palavra até acertar — o objetivo é zerar esta lista.
+        {t('drillHint')}
       </p>
     </div>
   )

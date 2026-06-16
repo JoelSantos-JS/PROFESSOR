@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { baseLang, languageName, languageFlag, languageLabel } from './languages'
+import { baseLang, languageName, languageNameFor, languageFlag, languageFlagCountry, languageLabel } from './languages'
 
 describe('baseLang', () => {
   it('strips region tags', () => {
@@ -30,6 +30,18 @@ describe('languageName', () => {
   })
 })
 
+describe('languageNameFor', () => {
+  it('localizes language names for the app UI', () => {
+    expect(languageNameFor('en', 'pt')).toBe('Inglês')
+    expect(languageNameFor('en', 'en')).toBe('English')
+    expect(languageNameFor('zh-CN', 'en')).toBe('Chinese')
+  })
+  it('localizes the unknown bucket', () => {
+    expect(languageNameFor('', 'pt')).toBe('Outro')
+    expect(languageNameFor('', 'en')).toBe('Other')
+  })
+})
+
 describe('languageFlag', () => {
   it('returns the flag for known languages', () => {
     expect(languageFlag('ko')).toBe('🇰🇷')
@@ -37,6 +49,17 @@ describe('languageFlag', () => {
   })
   it('falls back to a globe', () => {
     expect(languageFlag('xx')).toBe('🌐')
+  })
+})
+
+describe('languageFlagCountry', () => {
+  it('returns the country code used by CSS flag images', () => {
+    expect(languageFlagCountry('ko')).toBe('kr')
+    expect(languageFlagCountry('en-US')).toBe('gb')
+    expect(languageFlagCountry('pt-BR')).toBe('br')
+  })
+  it('falls back to null for unknown languages', () => {
+    expect(languageFlagCountry('xx')).toBeNull()
   })
 })
 

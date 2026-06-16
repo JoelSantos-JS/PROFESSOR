@@ -19,6 +19,7 @@ interface PlayOpts {
   onEnd?: () => void
   startMs?: number               // play only a slice (e.g. one word)
   endMs?: number
+  rate?: number                  // playback speed (1 = normal, 0.8 = slower for listening)
 }
 
 /** Play a clip (or a slice of it); pauses listening for its duration. */
@@ -28,6 +29,7 @@ export function playClip(url?: string, opts?: PlayOpts): void {
   ensurePaused()
 
   const audio = new Audio(url)
+  if (opts?.rate && opts.rate > 0) audio.playbackRate = opts.rate
   current = audio
   const endSec = opts?.endMs != null ? opts.endMs / 1000 : null
   let raf = 0

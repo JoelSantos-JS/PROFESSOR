@@ -8,8 +8,8 @@ export function setupStoreHandlers(): void {
 
   ipcMain.handle('store:languages', () => store.getLanguages())
 
-  ipcMain.handle('store:record-session', (_e, lineCount: number) => {
-    store.recordSession(lineCount)
+  ipcMain.handle('store:record-session', (_e, session: number | { lineCount: number; lang?: string; preview?: string[]; startedAt?: number; endedAt?: number }) => {
+    store.recordSession(session)
     return { ok: true }
   })
 
@@ -29,4 +29,25 @@ export function setupStoreHandlers(): void {
     store.gradeVocab(id, next)
     return { ok: true }
   })
+
+  ipcMain.handle('store:known-words', (_e, lang: string) => store.getKnownWords(lang))
+
+  ipcMain.handle('store:set-word-status', (_e, lang: string, word: string, status: string) => {
+    store.setWordStatus(lang, word, status as 'known' | 'learning' | 'ignore' | '')
+    return { ok: true }
+  })
+
+  ipcMain.handle('store:known-count', (_e, lang: string) => store.knownCount(lang))
+
+  ipcMain.handle('store:captured-today', () => store.capturedToday())
+
+  ipcMain.handle('store:mistakes', (_e, lang: string) => store.getMistakes(lang))
+
+  ipcMain.handle('store:record-token-usage', (_e, usage) => {
+    store.recordTokenUsage(usage)
+    return { ok: true }
+  })
+
+  ipcMain.handle('store:token-usage-summary', (_e, feature?: 'professor' | 'analysis' | 'lookup' | 'other') =>
+    store.getTokenUsageSummary(Date.now(), feature))
 }

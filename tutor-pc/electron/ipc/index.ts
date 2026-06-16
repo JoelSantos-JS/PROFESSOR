@@ -7,9 +7,11 @@ import { setupTutorHandlers } from './tutorHandlers.js'
 import { setupTtsHandlers } from './ttsHandlers.js'
 import { setupStoreHandlers } from './storeHandlers.js'
 import { setupMediaHandlers } from './mediaHandlers.js'
+import { setupAuthHandlers } from './authHandlers.js'
 
-export function setupIPC(windowManager: WindowManager): void {
-  setupWindowHandlers(windowManager)
+export function setupIPC(windowManager: WindowManager, onAuthComplete?: () => void): void {
+  setupAuthHandlers()
+  setupWindowHandlers(windowManager, onAuthComplete)
   setupSettingsHandlers()
   setupCredentialsHandlers()
   setupAudioHandlers()

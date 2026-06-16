@@ -1,13 +1,40 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, isEnglishLang, resolveRomanization, ROMANIZATION_SYSTEM, buildVariationsPrompt } from './tutorPrompt'
+import { buildSystemPrompt, buildLookupPrompt, buildDecomposePrompt, isEnglishLang, isJapaneseLang, resolveRomanization, ROMANIZATION_SYSTEM, buildVariationsPrompt } from './tutorPrompt'
 
 describe('buildSystemPrompt — sentence translation field', () => {
-  it('always requests a Portuguese translation of the whole sentence', () => {
+  it('always requests a translation of the whole sentence', () => {
     expect(buildSystemPrompt('en')).toContain('"translation"')
     expect(buildSystemPrompt('ko')).toContain('"translation"')
   })
-  it('describes translation as Brazilian Portuguese of the whole transcript', () => {
-    expect(buildSystemPrompt('en').toLowerCase()).toContain('portuguese translation of the whole transcript')
+  it('default native: Brazilian Portuguese translation of the whole transcript', () => {
+    expect(buildSystemPrompt('en').toLowerCase()).toContain('brazilian portuguese translation of the whole transcript')
+  })
+})
+
+describe('buildSystemPrompt — idioma nativo (i18n da saída do tutor)', () => {
+  it('default = português brasileiro', () => {
+    expect(buildSystemPrompt('zh')).toContain('Brazilian Portuguese speaker')
+  })
+  it('native ja → traduz para japonês', () => {
+    const p = buildSystemPrompt('en', 'ja')
+    expect(p).toContain('Japanese speaker')
+    expect(p).toContain('into Japanese')
+  })
+  it('native en → traduz para inglês e OMITE o englishText extra', () => {
+    const p = buildSystemPrompt('zh', 'en')
+    expect(p).toContain('English speaker')
+    expect(p).toContain('into English')
+    expect(p).not.toContain('"englishText"')
+  })
+  it('aceita region code (pt-BR)', () => {
+    expect(buildSystemPrompt('ja', 'pt-BR')).toContain('Brazilian Portuguese')
+  })
+  it('lookup e decompose também respeitam o nativo', () => {
+    expect(buildLookupPrompt('猫', '猫が好き', 'ja', 'en')).toMatch(/meaning in English/)
+    expect(buildDecomposePrompt('好', 'zh', 'ja')).toContain('Japanese speaker')
+  })
+  it('variations respeita o nativo', () => {
+    expect(buildVariationsPrompt('hi', 'en', 'ja')).toContain('Japanese speaker')
   })
 })
 
@@ -98,6 +125,76 @@ describe('buildSystemPrompt — englishText field', () => {
   })
 })
 
+describe('isJapaneseLang', () => {
+  it('is true for "ja" and ja-* variants', () => {
+    expect(isJapaneseLang('ja')).toBe(true)
+    expect(isJapaneseLang('ja-JP')).toBe(true)
+  })
+  it('is false for other languages', () => {
+    expect(isJapaneseLang('zh')).toBe(false)
+    expect(isJapaneseLang('ko')).toBe(false)
+    expect(isJapaneseLang('en')).toBe(false)
+    expect(isJapaneseLang('')).toBe(false)
+  })
+})
+
+describe('buildSystemPrompt — reading field (furigana, só japonês)', () => {
+  it('INCLUI o campo reading (hiragana) para japonês', () => {
+    const p = buildSystemPrompt('ja')
+    expect(p).toContain('"reading"')
+    expect(p).toContain('HIRAGANA')
+  })
+  it('inclui reading para ja-JP', () => {
+    expect(buildSystemPrompt('ja-JP')).toContain('"reading"')
+  })
+  it('OMITE reading para idiomas não-japoneses', () => {
+    for (const lang of ['zh', 'ko', 'en', 'pt', 'th']) {
+      expect(buildSystemPrompt(lang)).not.toContain('"reading"')
+    }
+  })
+  it('marca reading como MANDATORY para japonês', () => {
+    const p = buildSystemPrompt('ja')
+    expect(p).toMatch(/reading: MANDATORY/)
+  })
+})
+
+describe('buildLookupPrompt — acento tonal (japonês)', () => {
+  it('pede reading (hiragana) e pitchAccent para japonês', () => {
+    const p = buildLookupPrompt('箸', '箸を使う', 'ja')
+    expect(p).toContain('"reading"')
+    expect(p).toContain('"pitchAccent"')
+    expect(p).toContain('HIRAGANA')
+    expect(p).toMatch(/heiban/i)
+  })
+  it('NÃO pede pitchAccent para outros idiomas', () => {
+    for (const lang of ['zh', 'ko', 'en']) {
+      expect(buildLookupPrompt('x', 'y', lang)).not.toContain('"pitchAccent"')
+    }
+  })
+  it('ainda inclui o nome da palavra e o contexto', () => {
+    const p = buildLookupPrompt('猫', '猫が好き', 'ja')
+    expect(p).toContain('猫')
+    expect(p).toContain('猫が好き')
+  })
+})
+
+describe('buildDecomposePrompt — decomposição de caracteres', () => {
+  it('inclui o caractere e pede componentes/mnemônico em JSON', () => {
+    const p = buildDecomposePrompt('好', 'zh')
+    expect(p).toContain('好')
+    expect(p).toContain('"components"')
+    expect(p).toContain('"mnemonic"')
+    expect(p).toContain('"strokes"')
+  })
+  it('usa o sistema de romanização do idioma (pinyin p/ zh)', () => {
+    expect(buildDecomposePrompt('好', 'zh')).toContain('Pinyin')
+    expect(buildDecomposePrompt('好', 'ja')).toContain('Romaji')
+  })
+  it('pede resposta só em JSON', () => {
+    expect(buildDecomposePrompt('愛', 'ja')).toMatch(/raw JSON/)
+  })
+})
+
 describe('buildSystemPrompt — romanization field', () => {
   it('includes Pinyin instruction for Chinese', () => {
     const p = buildSystemPrompt('zh')
@@ -129,8 +226,8 @@ describe('buildSystemPrompt — invariants', () => {
     }
   })
 
-  it('always targets a Portuguese (Brazilian) speaker', () => {
-    expect(buildSystemPrompt('zh')).toContain('Portuguese (Brazilian)')
+  it('por padrão fala com um nativo de português brasileiro', () => {
+    expect(buildSystemPrompt('zh')).toContain('Brazilian Portuguese speaker')
   })
 
   it('mentions the detected language code in the note when romanized', () => {

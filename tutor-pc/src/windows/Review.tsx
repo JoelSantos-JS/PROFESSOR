@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Volume2, Check, X, Brain, Shuffle, Loader2 } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { storeAPI, ttsAPI, tutorAPI, windowAPI, onChannel } from '../services/electron'
+import { storeAPI, ttsAPI, tutorAPI, windowAPI, onChannel, settingsAPI } from '../services/electron'
 import { reviewCard, nextDue, type Grade } from '../lib/srs'
 import { playClip } from '../lib/playClip'
-import { languageLabel } from '../lib/languages'
+import { languageFlag, languageNameFor } from '../lib/languages'
+import { uiText, appLanguage, type AppLanguage } from '../lib/uiLanguage'
 import type { VocabCard, SentenceVariation, LangStat } from '../types'
 
 async function speak(text: string, lang: string) {
@@ -15,6 +16,8 @@ async function speak(text: string, lang: string) {
 }
 
 export default function Review() {
+  const [uiLang, setUiLang] = useState<AppLanguage>('pt')
+  const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
   const [queue, setQueue]   = useState<VocabCard[]>([])
   const [idx, setIdx]       = useState(0)
   const [revealed, setReveal] = useState(false)
@@ -37,6 +40,8 @@ export default function Review() {
       .then(cards => { setQueue(cards); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => { settingsAPI.getAll().then(s => setUiLang(appLanguage(s.appLanguage))).catch(() => {}) }, [])
 
   useEffect(() => {
     Promise.all([storeAPI.languages(), windowAPI.pendingReviewLang()]).then(([langs, pending]) => {
@@ -81,7 +86,7 @@ export default function Review() {
 
   return (
     <div className="flex flex-col h-screen app-paper text-foreground">
-      <TitleBar title="Revisão" />
+      <TitleBar title={t('review')} />
 
       {/* Language separator — one deck per studied language */}
       {languages.length > 1 && (
@@ -97,7 +102,7 @@ export default function Review() {
                   : 'text-muted hover:text-foreground hover:bg-white border-transparent',
               ].join(' ')}
             >
-              {languageLabel(l.lang)}
+              {languageFlag(l.lang)} {languageNameFor(l.lang, uiLang)}
               {l.due > 0 && (
                 <span className={l.lang === selectedLang ? 'text-primary' : 'text-warning'}>{l.due}</span>
               )}
@@ -108,17 +113,17 @@ export default function Review() {
 
       <div className="flex-1 flex flex-col items-center justify-center p-7">
         {loading ? (
-          <p className="text-sm text-muted">Carregando...</p>
+          <p className="text-sm text-muted">{t('loadingWord')}</p>
         ) : !card ? (
           <div className="flex flex-col items-center gap-3 text-center">
             <Brain size={40} className="text-success opacity-50" />
             <h2 className="display-title text-2xl">
-              {done > 0 ? 'Revisão concluída!' : 'Nada para revisar agora'}
+              {done > 0 ? t('reviewDone') : t('nothingDue')}
             </h2>
             <p className="text-sm text-muted">
               {done > 0
-                ? `Você revisou ${done} ${done === 1 ? 'frase' : 'frases'}.`
-                : 'Capture frases no Tutor Board e volte mais tarde.'}
+                ? `${t('youReviewed')} ${done} ${t(done === 1 ? 'phrase' : 'phrases')}.`
+                : t('captureAndComeBack')}
             </p>
           </div>
         ) : (
@@ -126,7 +131,7 @@ export default function Review() {
             {/* Progress */}
             <div className="flex items-center justify-between mb-4 text-xs text-muted">
               <span>{idx + 1} / {queue.length}</span>
-              <span>{done} revisadas</span>
+              <span>{done} {t('reviewedCount')}</span>
             </div>
 
             {/* Card */}
@@ -136,7 +141,7 @@ export default function Review() {
                 <button
                   onClick={() => speak(card.word, card.lang)}
                   className="text-muted hover:text-primary transition-colors shrink-0 mt-2"
-                  title="Ouvir"
+                  title={t('listen')}
                 >
                   <Volume2 size={18} />
                 </button>
@@ -155,17 +160,17 @@ export default function Review() {
                       className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary/80 hover:text-primary transition-colors disabled:opacity-50"
                     >
                       {varLoading ? <Loader2 size={13} className="animate-spin" /> : <Shuffle size={13} />}
-                      {varLoading ? 'Gerando variações...' : 'Ver variações'}
+                      {varLoading ? t('generatingVariations') : t('seeVariations')}
                     </button>
                   ) : variations.length > 0 ? (
                     <div className="mt-3 space-y-1.5 text-left">
-                      <p className="text-[10px] uppercase tracking-wider text-muted/50">Outras formas de dizer</p>
+                      <p className="text-[10px] uppercase tracking-wider text-muted/50">{t('otherWaysToSay')}</p>
                       {variations.map((v, i) => (
                         <div key={i} className="flex items-start gap-1.5">
                           <button
                             onClick={() => speak(v.text, card.lang)}
                             className="text-muted hover:text-primary transition-colors shrink-0 mt-0.5"
-                            title="Ouvir"
+                            title={t('listen')}
                           >
                             <Volume2 size={13} />
                           </button>
@@ -177,7 +182,7 @@ export default function Review() {
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-muted/50">Sem variações disponíveis.</p>
+                    <p className="mt-3 text-xs text-muted/50">{t('noVariations')}</p>
                   )}
                 </div>
               )}
@@ -189,18 +194,18 @@ export default function Review() {
                 onClick={() => setReveal(true)}
                 className="w-full mt-4 pill-button pill-primary py-3 text-sm"
               >
-                Mostrar resposta
+                {t('showAnswer')}
               </button>
             ) : (
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <button onClick={() => grade(1)} className="flex flex-col items-center gap-1 bg-danger/15 text-danger hover:bg-danger/25 py-3 rounded-xl text-xs font-bold transition-colors">
-                  <X size={16} /> Errei
+                  <X size={16} /> {t('gotWrong')}
                 </button>
                 <button onClick={() => grade(3)} className="flex flex-col items-center gap-1 bg-warning/15 text-warning hover:bg-warning/25 py-3 rounded-xl text-xs font-bold transition-colors">
-                  <Brain size={16} /> Difícil
+                  <Brain size={16} /> {t('hard')}
                 </button>
                 <button onClick={() => grade(5)} className="flex flex-col items-center gap-1 bg-success/15 text-success hover:bg-success/25 py-3 rounded-xl text-xs font-bold transition-colors">
-                  <Check size={16} /> Fácil
+                  <Check size={16} /> {t('easy')}
                 </button>
               </div>
             )}

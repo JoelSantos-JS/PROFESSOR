@@ -1,6 +1,10 @@
 import { CredentialsService } from './credentialsService'
 import { SettingsService } from './settingsService'
-import { buildSystemPrompt, buildLookupPrompt, buildVariationsPrompt } from '../lib/tutorPrompt.js'
+import { buildSystemPrompt, buildLookupPrompt, buildVariationsPrompt, buildDecomposePrompt } from '../lib/tutorPrompt.js'
+import {
+  buildProfessorSystemPrompt, parseProfessorTurn, sessionContext, trimHistory,
+  type ProfessorMessage, type ProfessorTurn,
+} from '../lib/professorPrompt.js'
 import { providerFetch } from '../lib/providerFetch.js'
 
 export { buildSystemPrompt } from '../lib/tutorPrompt.js'
@@ -16,6 +20,7 @@ export interface TutorAnalysis {
   transcript: string
   pinyin?: string        // full pinyin of transcript (only for Chinese)
   romanization?: string  // full romanization of the transcript
+  reading?: string       // full hiragana reading (only for Japanese — for furigana)
   englishText?: string   // English translation (only when content is not English)
   translation?: string   // Brazilian Portuguese translation of the whole sentence
   vocab: VocabItem[]
@@ -26,8 +31,25 @@ export interface TutorAnalysis {
 export interface WordLookup {
   word: string
   romanization?: string
+  reading?: string       // leitura kana (japonês — para o acento tonal)
+  pitchAccent?: number   // posição do downstep (0 = heiban) — japonês
   meanings: string[]
   note?: string
+}
+
+export interface CharComponent {
+  part: string
+  meaning: string
+  reading?: string
+}
+
+export interface CharDecomposition {
+  character: string
+  meaning: string
+  reading?: string
+  strokes?: number
+  components: CharComponent[]
+  mnemonic?: string
 }
 
 function formatProviderError(body: string): string {
@@ -48,20 +70,21 @@ export class TutorService {
   ) {}
 
   async analyze(transcript: string, detectedLanguage: string): Promise<TutorAnalysis> {
-    const { activeAiProvider } = this.settings.getAll()
+    const { activeAiProvider, nativeLanguage } = this.settings.getAll()
     const apiKey = this.credentials.get(activeAiProvider)
 
     if (!apiKey) {
       throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
     }
 
-    const raw = await this.callProvider(activeAiProvider, apiKey, transcript, detectedLanguage)
+    const raw = await this.callProvider(activeAiProvider, apiKey, transcript, detectedLanguage, nativeLanguage)
 
     try {
-      const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; englishText?: string; translation?: string }
+      const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; reading?: string; englishText?: string; translation?: string }
       return {
         transcript,
         romanization: parsed.romanization,
+        reading: parsed.reading,
         englishText: parsed.englishText,
         translation: parsed.translation,
         vocab: parsed.vocab ?? [],
@@ -75,11 +98,11 @@ export class TutorService {
 
   /** On-demand paraphrases of a sentence for varied practice. */
   async variations(sentence: string, lang: string): Promise<Array<{ text: string; translation: string }>> {
-    const { activeAiProvider } = this.settings.getAll()
+    const { activeAiProvider, nativeLanguage } = this.settings.getAll()
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const raw = await this.dispatch(activeAiProvider, apiKey, sentence, buildVariationsPrompt(sentence, lang))
+    const raw = await this.dispatch(activeAiProvider, apiKey, sentence, buildVariationsPrompt(sentence, lang, nativeLanguage))
     try {
       const parsed = JSON.parse(raw) as { variations?: Array<{ text?: string; translation?: string }> }
       return (parsed.variations ?? [])
@@ -91,18 +114,20 @@ export class TutorService {
   }
 
   async lookup(word: string, context: string, lang: string): Promise<WordLookup> {
-    const { activeAiProvider } = this.settings.getAll()
+    const { activeAiProvider, nativeLanguage } = this.settings.getAll()
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const prompt = buildLookupPrompt(word, context, lang)
+    const prompt = buildLookupPrompt(word, context, lang, nativeLanguage)
     const raw = await this.dispatch(activeAiProvider, apiKey, word, prompt)
 
     try {
-      const parsed = JSON.parse(raw) as { romanization?: string; meanings?: string[]; note?: string }
+      const parsed = JSON.parse(raw) as { romanization?: string; reading?: string; pitchAccent?: number; meanings?: string[]; note?: string }
       return {
         word,
         romanization: parsed.romanization,
+        reading: parsed.reading,
+        pitchAccent: typeof parsed.pitchAccent === 'number' ? parsed.pitchAccent : undefined,
         meanings: parsed.meanings ?? [],
         note: parsed.note || undefined,
       }
@@ -111,8 +136,63 @@ export class TutorService {
     }
   }
 
-  private async callProvider(provider: string, apiKey: string, transcript: string, lang: string): Promise<string> {
-    return this.dispatch(provider, apiKey, transcript, buildSystemPrompt(lang))
+  /** Decompõe um caractere Han em componentes/radicais + mnemônico (sob demanda). */
+  async decompose(char: string, lang: string): Promise<CharDecomposition> {
+    const { activeAiProvider, nativeLanguage } = this.settings.getAll()
+    const apiKey = this.credentials.get(activeAiProvider)
+    if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
+
+    const raw = await this.dispatch(activeAiProvider, apiKey, char, buildDecomposePrompt(char, lang, nativeLanguage))
+    try {
+      const parsed = JSON.parse(raw) as Partial<CharDecomposition>
+      const components = Array.isArray(parsed.components)
+        ? parsed.components
+            .filter((c): c is CharComponent => !!c && typeof c.part === 'string' && c.part.length > 0)
+            .map(c => ({ part: c.part, meaning: c.meaning ?? '', reading: c.reading || undefined }))
+        : []
+      return {
+        character: char,
+        meaning: parsed.meaning ?? '',
+        reading: parsed.reading || undefined,
+        strokes: typeof parsed.strokes === 'number' && parsed.strokes > 0 ? parsed.strokes : undefined,
+        components,
+        mnemonic: parsed.mnemonic || undefined,
+      }
+    } catch {
+      return { character: char, meaning: '', components: [] }
+    }
+  }
+
+  /**
+   * Professor-IA de conversa ("language parent"): dado o contexto da sessão + histórico,
+   * devolve a próxima pergunta + feedback estruturado da última resposta do aluno.
+   */
+  async converse(opts: {
+    lang: string
+    level?: string
+    context: string[]
+    history: ProfessorMessage[]
+    userMessage: string
+  }): Promise<ProfessorTurn> {
+    const { activeAiProvider, nativeLanguage } = this.settings.getAll()
+    const apiKey = this.credentials.get(activeAiProvider)
+    if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
+
+    const system = buildProfessorSystemPrompt({
+      lang: opts.lang,
+      native: nativeLanguage,
+      level: opts.level,
+      context: sessionContext(opts.context),
+      history: trimHistory(opts.history),
+    })
+    // Primeira jogada (sem fala do aluno) → dispara a 1ª pergunta.
+    const userText = opts.userMessage?.trim() || 'Start the conversation: ask your first question about the context.'
+    const raw = await this.dispatch(activeAiProvider, apiKey, userText, system)
+    return parseProfessorTurn(raw)
+  }
+
+  private async callProvider(provider: string, apiKey: string, transcript: string, lang: string, native = 'pt'): Promise<string> {
+    return this.dispatch(provider, apiKey, transcript, buildSystemPrompt(lang, native))
   }
 
   private async dispatch(provider: string, apiKey: string, userText: string, prompt: string): Promise<string> {

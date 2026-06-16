@@ -1,6 +1,6 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
 
-export type WindowName = 'dashboard' | 'floating-bar' | 'settings' | 'tutor-board' | 'review'
+export type WindowName = 'auth' | 'dashboard' | 'floating-bar' | 'settings' | 'tutor-board' | 'review'
 
 export interface WindowConfig {
   options: Omit<BrowserWindowConstructorOptions, 'webPreferences'> & {
@@ -17,6 +17,24 @@ const baseWebPrefs = {
 }
 
 export const windowConfigs: Record<WindowName, WindowConfig> = {
+  auth: {
+    options: {
+      width: 368,
+      height: 640,
+      minWidth: 368,
+      minHeight: 640,
+      maxWidth: 368,
+      maxHeight: 640,
+      show: false,
+      frame: false,
+      center: true,
+      resizable: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      webPreferences: baseWebPrefs,
+    },
+  },
+
   dashboard: {
     options: {
       width: 1100,
@@ -25,17 +43,17 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       minHeight: 600,
       show: false,
       frame: false,
-      backgroundColor: '#070D17',
+      backgroundColor: '#F3EAE0',  // creme base (--bg) p/ não dar flash escuro antes do conteúdo pintar
       webPreferences: baseWebPrefs,
     },
   },
 
   'floating-bar': {
     options: {
-      width: 420,
-      height: 600,
-      minWidth: 400,
-      minHeight: 460,
+      width: 400,
+      height: 228,            // começa compacta; cresce p/ ~560 quando há transcrição
+      minWidth: 360,
+      minHeight: 180,
       maxWidth: 440,
       maxHeight: 680,
       show: false,
@@ -57,7 +75,7 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       show: false,
       frame: false,
       resizable: false,
-      backgroundColor: '#070D17',
+      backgroundColor: '#F3EAE0',  // creme base (--bg) p/ não dar flash escuro antes do conteúdo pintar
       webPreferences: baseWebPrefs,
     },
   },
@@ -84,7 +102,7 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       minHeight: 440,
       show: false,
       frame: false,
-      backgroundColor: '#070D17',
+      backgroundColor: '#F3EAE0',  // creme base (--bg) p/ não dar flash escuro antes do conteúdo pintar
       webPreferences: baseWebPrefs,
     },
   },

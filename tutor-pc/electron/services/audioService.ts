@@ -73,11 +73,13 @@ export class AudioService {
       : audioBuffer
 
     console.log(`[audio] provider=${activeTranscriptionProvider} received format=${this.blobMeta(buf).name} bytes=${buf.length}`)
-    const spokenLanguage = normalizeLang(
-      settings.contentLanguage && settings.contentLanguage !== 'auto'
-        ? settings.contentLanguage
-        : settings.targetLanguage,
-    )
+    // Só FORÇA o idioma quando o usuário definiu o idioma do conteúdo explicitamente.
+    // Em 'auto', deixa o Whisper detectar — NÃO cair no targetLanguage (que é o idioma
+    // que o usuário quer APRENDER, não o do conteúdo), senão um doroma em mandarim seria
+    // transcrito à força como inglês.
+    const spokenLanguage = settings.contentLanguage && settings.contentLanguage !== 'auto'
+      ? normalizeLang(settings.contentLanguage)
+      : ''
 
     switch (activeTranscriptionProvider) {
       case 'openai':  return this.whisperOpenAI(buf, apiKey, hint, spokenLanguage)

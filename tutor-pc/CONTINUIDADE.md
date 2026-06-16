@@ -1,11 +1,11 @@
-# PROFESSOR — Documento de Continuidade
+# Capta — Documento de Continuidade
 
 > Handoff para a próxima sessão (Codex/Claude). Lê isto antes de mexer no projeto.
 > Última atualização: 2026-05-29
 
 ---
 
-## 1. O que é o PROFESSOR
+## 1. O que é o Capta
 
 Tutor de idiomas **desktop (Electron)** que captura o **áudio do PC** (system audio via
 WASAPI loopback + microfone), transcreve em tempo real, detecta o idioma automaticamente,

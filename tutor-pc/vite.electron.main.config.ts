@@ -7,6 +7,9 @@ const externals = [
   ...builtinModules,
   ...builtinModules.map(m => `node:${m}`),
   'node-edge-tts',
+  'kokoro-js',
+  '@huggingface/transformers',
+  'phonemizer',
 ]
 
 // main.mjs — ESM so Electron 28+ handles `import { app } from 'electron'` natively
@@ -17,7 +20,10 @@ export default defineConfig({
     minify: false,
     sourcemap: false,
     rollupOptions: {
-      input: { main: resolve('electron/main.ts') },
+      input: {
+        main: resolve('electron/main.ts'),
+        kokoroWorker: resolve('electron/services/kokoroWorker.ts'),
+      },
       output: {
         format: 'es',
         entryFileNames: '[name].mjs',

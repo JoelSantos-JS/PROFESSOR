@@ -47,6 +47,29 @@ export function setupTutorHandlers(windowManager: WindowManager): void {
     }
   })
 
+  // Professor-IA de conversa: próxima pergunta + feedback da resposta do aluno
+  ipcMain.handle('tutor:converse', async (_e, opts: { lang: string; level?: string; context: string[]; history: unknown[]; userMessage: string }) => {
+    try {
+      const result = await tutor.converse(opts as never)
+      return { ok: true, result }
+    } catch (err) {
+      console.error('[tutor] converse error:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
+  // On-demand character decomposition (radicals/components + mnemonic)
+  ipcMain.handle('tutor:decompose', async (_e, char: string, lang: string) => {
+    if (!char?.trim()) return { ok: false, error: 'empty' }
+    try {
+      const result = await tutor.decompose(char, lang)
+      return { ok: true, result }
+    } catch (err) {
+      console.error('[tutor] decompose error:', (err as Error).message)
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
   // On-demand single-word dictionary lookup (click a word)
   ipcMain.handle('tutor:lookup', async (_e, word: string, context: string, lang: string) => {
     if (!word?.trim()) return { ok: false, error: 'empty' }
