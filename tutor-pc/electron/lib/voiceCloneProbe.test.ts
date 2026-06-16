@@ -12,7 +12,7 @@ describe('buildVoiceEnrollRequest', () => {
   })
   it('nome vazio cai num rótulo padrão', () => {
     expect(buildVoiceEnrollRequest('elevenlabs', { name: '  ', apiKey: 'k' })!.fields.name)
-      .toMatch(/Capta/)
+      .toMatch(/Soaken/)
   })
   it('sem chave → undefined', () => {
     expect(buildVoiceEnrollRequest('elevenlabs', { name: 'x', apiKey: '' })).toBeUndefined()

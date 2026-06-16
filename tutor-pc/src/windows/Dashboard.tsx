@@ -55,7 +55,7 @@ export default function Dashboard() {
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-[62px] shrink-0 flex flex-col items-center gap-1.5 py-3.5 bg-surface-2 border-r border-border">
           <div className="w-[38px] h-[38px] rounded-xl bg-primary text-white grid place-items-center display-title text-[21px] mb-2">
-            C
+            S
           </div>
 
           <NavButton icon={Home} label={t('dashboardTitle')} active />

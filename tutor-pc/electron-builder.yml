@@ -1,6 +1,6 @@
-appId: com.capta.app
-productName: Capta
-copyright: Copyright © 2025 Capta
+appId: com.soaken.app
+productName: Soaken
+copyright: Copyright © 2025 Soaken
 
 directories:
   output: release

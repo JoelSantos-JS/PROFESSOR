@@ -503,7 +503,7 @@ export default function Settings() {
         <section>
           <h2 className="label-eyebrow mb-3">{t('about')}</h2>
           <div className="paper-card p-4">
-            <p className="display-title text-xl text-foreground mb-1">Capta</p>
+            <p className="display-title text-xl text-foreground mb-1">Soaken</p>
             <p className="text-xs text-muted">
               {uiLang === 'en'
                 ? 'v0.1.0 - M0 Shell - Your floating English tutor for any PC audio.'

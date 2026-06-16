@@ -27,8 +27,8 @@ export function validateVoiceSample(s: { durationMs: number; mimeType?: string }
 }
 
 const PROMPTS: Record<string, string> = {
-  pt: 'Olá! Esta é a minha voz. Estou gravando esta frase para o Capta aprender o meu timbre e me ajudar a praticar pronúncia.',
-  en: 'Hello! This is my voice. I am reading this sentence so Capta can learn how I sound and help me practice pronunciation.',
+  pt: 'Olá! Esta é a minha voz. Estou gravando esta frase para o Soaken aprender o meu timbre e me ajudar a praticar pronúncia.',
+  en: 'Hello! This is my voice. I am reading this sentence so Soaken can learn how I sound and help me practice pronunciation.',
 }
 
 /** Frase neutra pra ler na calibração (na língua da interface), com fallback pro português. */

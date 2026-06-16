@@ -204,7 +204,7 @@ export class AuthService {
         }
 
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-        res.end('<!doctype html><title>Capta</title><body style="font-family:sans-serif;padding:24px">Login concluido. Voce pode fechar esta aba.</body>')
+        res.end('<!doctype html><title>Soaken</title><body style="font-family:sans-serif;padding:24px">Login concluido. Voce pode fechar esta aba.</body>')
         finish(() => resolve(code))
       })
 

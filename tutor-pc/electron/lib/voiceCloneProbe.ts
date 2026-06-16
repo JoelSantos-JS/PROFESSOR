@@ -36,7 +36,7 @@ export function buildVoiceEnrollRequest(
       url: 'https://api.elevenlabs.io/v1/voices/add',
       method: 'POST',
       headers: { 'xi-api-key': opts.apiKey },
-      fields: { name: opts.name?.trim() || 'Capta — minha voz' },
+      fields: { name: opts.name?.trim() || 'Soaken — minha voz' },
       fileField: 'files',
     }
   }

@@ -89,7 +89,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
           {step === 'welcome' && (
             <section className="fade-up">
-              <p className="label-eyebrow mb-2">{t('welcomeTo')} Capta</p>
+              <p className="label-eyebrow mb-2">{t('welcomeTo')} Soaken</p>
               <h1 className="display-title text-3xl mb-1">{t('whichLanguage')}</h1>
               <p className="text-sm text-muted mb-4">{t('onbWelcomeDesc')}</p>
 

@@ -111,7 +111,7 @@ export default function Auth() {
       <main className="flex-1 min-h-0 overflow-hidden px-6 pt-3 pb-2">
         <div className="flex flex-col items-center text-center">
           <div className="w-[48px] h-[48px] rounded-[15px] bg-primary text-white grid place-items-center display-title text-[28px] shadow-[0_10px_22px_rgba(194,104,63,.32)] mb-2">
-            C
+            S
           </div>
           <h1 className="display-title text-[21px] leading-tight text-foreground">
             {mode === 'login' ? t('welcome') : t('createYourAccount')}
@@ -337,7 +337,7 @@ function LegalModal({ doc, onClose }: { doc: LegalDoc; onClose: () => void }) {
 const LEGAL: Record<'pt' | 'en', { terms: string[]; privacy: string[] }> = {
   pt: {
     terms: [
-      'O Capta e uma ferramenta de estudo de idiomas. Ele pode gerar analises, traducoes e feedbacks com IA, mas nao substitui professor humano, avaliador oficial ou certificacao.',
+      'O Soaken e uma ferramenta de estudo de idiomas. Ele pode gerar analises, traducoes e feedbacks com IA, mas nao substitui professor humano, avaliador oficial ou certificacao.',
       'Voce e responsavel pelo conteudo que captura, envia ou pratica no app, incluindo direitos de uso de audio, video, legenda e materiais de terceiros.',
       'O uso de provedores externos, como Supabase, Google e APIs de IA configuradas no app, tambem segue os termos dessas plataformas.',
       'Podemos alterar recursos, limites e funcionamento do app durante o desenvolvimento. Use com cuidado antes de depender dele para estudo, trabalho ou avaliacao oficial.',
@@ -352,7 +352,7 @@ const LEGAL: Record<'pt' | 'en', { terms: string[]; privacy: string[] }> = {
   },
   en: {
     terms: [
-      'Capta is a language-study tool. It can generate analyses, translations and feedback with AI, but it does not replace a human teacher, official examiner or certification.',
+      'Soaken is a language-study tool. It can generate analyses, translations and feedback with AI, but it does not replace a human teacher, official examiner or certification.',
       'You are responsible for the content you capture, send or practice in the app, including usage rights for audio, video, subtitles and third-party materials.',
       'Using external providers such as Supabase, Google and the AI APIs configured in the app also follows the terms of those platforms.',
       'We may change features, limits and how the app works during development. Use it with care before relying on it for study, work or official assessment.',

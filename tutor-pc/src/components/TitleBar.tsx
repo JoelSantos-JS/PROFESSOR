@@ -13,11 +13,11 @@ export default function TitleBar({ title, showMinimize = true }: Props) {
       style={{ WebkitAppRegion: 'drag' }}
     >
       <div className="w-[22px] h-[22px] rounded-[7px] bg-primary text-white grid place-items-center shrink-0">
-        <span className="text-[12px] font-bold leading-none">C</span>
+        <span className="text-[12px] font-bold leading-none">S</span>
       </div>
       <div className="min-w-0">
         <span className="block text-sm font-semibold text-foreground truncate">{title}</span>
-        <span className="block text-[11px] font-medium text-muted -mt-0.5">Capta</span>
+        <span className="block text-[11px] font-medium text-muted -mt-0.5">Soaken</span>
       </div>
       <div
         className="ml-auto flex items-center gap-1"
