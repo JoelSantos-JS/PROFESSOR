@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('api', {
     close: () => ipcRenderer.send('window:close'),
     hide: () => ipcRenderer.send('window:hide'),
     show: (name: string) => ipcRenderer.send('window:show', name),
+    toggle: (name: string) => ipcRenderer.send('window:toggle', name),
+    hideBars: () => ipcRenderer.send('app:hide-bars'),
+    showBars: () => ipcRenderer.send('app:show-bars'),
     openReview: (lang?: string) => ipcRenderer.send('review:open', lang),
     pendingReviewLang: () => ipcRenderer.invoke('review:pending-lang'),
     onboardingComplete: () => ipcRenderer.send('app:onboarding-complete'),
@@ -44,6 +47,15 @@ contextBridge.exposeInMainWorld('api', {
   },
   tts: {
     speak: (text: string, lang: string) => ipcRenderer.invoke('tts:speak', text, lang),
+    speakVariant: (text: string, voice: string, lang?: string) => ipcRenderer.invoke('tts:speak-variant', text, voice, lang),
+  },
+  pronunciation: {
+    native: (word: string, lang: string) => ipcRenderer.invoke('pronunciation:native', word, lang),
+    audio: (url: string) => ipcRenderer.invoke('pronunciation:audio', url),
+  },
+  forvo: {
+    setKey: (key: string) => ipcRenderer.invoke('forvo:set-key', key),
+    hasKey: () => ipcRenderer.invoke('forvo:has-key'),
   },
   listening: {
     pause:  () => ipcRenderer.send('listening:pause'),
@@ -76,6 +88,7 @@ contextBridge.exposeInMainWorld('api', {
     mistakes:       (lang: string) => ipcRenderer.invoke('store:mistakes', lang),
     recordTokenUsage: (usage: unknown) => ipcRenderer.invoke('store:record-token-usage', usage),
     tokenUsageSummary: (feature?: string) => ipcRenderer.invoke('store:token-usage-summary', feature),
+    usageEvents:    () => ipcRenderer.invoke('store:usage-events'),
   },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const listener = (_: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

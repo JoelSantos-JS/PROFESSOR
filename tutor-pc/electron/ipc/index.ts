@@ -8,6 +8,7 @@ import { setupTtsHandlers } from './ttsHandlers.js'
 import { setupStoreHandlers } from './storeHandlers.js'
 import { setupMediaHandlers } from './mediaHandlers.js'
 import { setupAuthHandlers } from './authHandlers.js'
+import { setupPronunciationHandlers } from './pronunciationHandlers.js'
 
 export function setupIPC(windowManager: WindowManager, onAuthComplete?: () => void): void {
   setupAuthHandlers()
@@ -19,4 +20,5 @@ export function setupIPC(windowManager: WindowManager, onAuthComplete?: () => vo
   setupTtsHandlers()
   setupStoreHandlers()
   setupMediaHandlers()
+  setupPronunciationHandlers()
 }

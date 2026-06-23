@@ -1,6 +1,6 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
 
-export type WindowName = 'auth' | 'dashboard' | 'floating-bar' | 'settings' | 'tutor-board' | 'review'
+export type WindowName = 'auth' | 'dashboard' | 'floating-bar' | 'settings' | 'tutor-board' | 'review' | 'dock' | 'splash'
 
 export interface WindowConfig {
   options: Omit<BrowserWindowConstructorOptions, 'webPreferences'> & {
@@ -17,6 +17,25 @@ const baseWebPrefs = {
 }
 
 export const windowConfigs: Record<WindowName, WindowConfig> = {
+  // Splash de abertura: janela frameless arredondada, centralizada, sempre no topo. Aparece
+  // antes das janelas reais e fecha quando a UI principal fica pronta (tempo mínimo de exibição).
+  splash: {
+    options: {
+      width: 320,
+      height: 400,
+      show: false,
+      frame: false,
+      center: true,
+      resizable: false,
+      transparent: true,
+      backgroundColor: '#00000000',  // alpha total — sem isso a margem renderiza preta no Windows
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      webPreferences: baseWebPrefs,
+    },
+    devTools: false,
+  },
+
   auth: {
     options: {
       width: 368,
@@ -43,7 +62,7 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       minHeight: 600,
       show: false,
       frame: false,
-      backgroundColor: '#F3EAE0',  // creme base (--bg) p/ não dar flash escuro antes do conteúdo pintar
+      backgroundColor: '#EDF3F2',  // --bg (Deep Soak) p/ não dar flash antes do conteúdo pintar
       webPreferences: baseWebPrefs,
     },
   },
@@ -75,7 +94,7 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       show: false,
       frame: false,
       resizable: false,
-      backgroundColor: '#F3EAE0',  // creme base (--bg) p/ não dar flash escuro antes do conteúdo pintar
+      backgroundColor: '#EDF3F2',  // --bg (Deep Soak) p/ não dar flash antes do conteúdo pintar
       webPreferences: baseWebPrefs,
     },
   },
@@ -102,8 +121,30 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       minHeight: 440,
       show: false,
       frame: false,
-      backgroundColor: '#F3EAE0',  // creme base (--bg) p/ não dar flash escuro antes do conteúdo pintar
+      backgroundColor: '#EDF3F2',  // --bg (Deep Soak) p/ não dar flash antes do conteúdo pintar
       webPreferences: baseWebPrefs,
     },
+  },
+
+  // Dock: barrinha horizontal flutuante (launcher) — vidro translúcido, sempre no topo.
+  // Janela um pouco maior que a barra interna para as quinas arredondadas + sombra aparecerem.
+  // skipTaskbar:true → sem botão na taskbar (janela transparente não rende confiável lá);
+  // o ponto de restauração quando escondido é o ícone na bandeja do sistema (system tray).
+  dock: {
+    options: {
+      width: 330,
+      height: 80,
+      show: false,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',  // alpha total — sem isso a margem renderiza preta no Windows
+      alwaysOnTop: true,
+      resizable: false,
+      movable: true,
+      skipTaskbar: true,
+      title: 'Soaken',
+      webPreferences: baseWebPrefs,
+    },
+    devTools: false,
   },
 }

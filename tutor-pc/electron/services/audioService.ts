@@ -1,5 +1,7 @@
 import { CredentialsService, type ProviderId } from './credentialsService'
 import { SettingsService } from './settingsService'
+import { StoreService } from './storeService'
+import { transcriptionModelFor, estimateTokens, estimateAudioSeconds } from '../lib/usageRecording.js'
 import { shouldRejectTranscript, type WhisperSegment } from '../lib/transcriptFilter.js'
 import { normalizeLang } from '../lib/langNormalize.js'
 import { cuesFromWhisperResponse, extractWhisperWords, type WhisperWord, type Cue, type WhisperTimedSegment } from '../lib/whisperWords.js'
@@ -43,10 +45,30 @@ function formatProviderError(body: string): string {
 }
 
 export class AudioService {
+  private store = new StoreService()
+
   constructor(
     private credentials: CredentialsService,
     private settings: SettingsService,
   ) {}
+
+  // Registra o custo estimado da transcrição (Whisper = por minuto de áudio; Gemini = por tokens).
+  private recordTranscription(provider: string, buf: Uint8Array, result: TranscribeResult): void {
+    try {
+      const audioSeconds = estimateAudioSeconds(buf)
+      const isGemini = provider === 'gemini'
+      this.store.recordTokenUsage({
+        feature: 'transcription',
+        provider,
+        model: transcriptionModelFor(provider),
+        lang: result.language,
+        audioSeconds,
+        inputTokens: isGemini ? Math.round(audioSeconds * 32) : 0,   // Gemini conta áudio ~32 tok/s
+        outputTokens: isGemini ? estimateTokens(result.text) : 0,
+        totalTokens: 0,
+      })
+    } catch { /* ignore */ }
+  }
 
   // `hint` biases Whisper toward expected words (used for single-word practice
   // where short, context-free audio is otherwise easy to mis-transcribe).
@@ -81,13 +103,16 @@ export class AudioService {
       ? normalizeLang(settings.contentLanguage)
       : ''
 
+    let result: TranscribeResult
     switch (activeTranscriptionProvider) {
-      case 'openai':  return this.whisperOpenAI(buf, apiKey, hint, spokenLanguage)
-      case 'groq':    return this.whisperGroq(buf, apiKey, hint, spokenLanguage)
-      case 'gemini':  return this.geminiAudio(buf, apiKey)
+      case 'openai':  result = await this.whisperOpenAI(buf, apiKey, hint, spokenLanguage); break
+      case 'groq':    result = await this.whisperGroq(buf, apiKey, hint, spokenLanguage); break
+      case 'gemini':  result = await this.geminiAudio(buf, apiKey); break
       default:
         throw new Error(`Provider "${activeTranscriptionProvider}" não suporta transcrição.`)
     }
+    this.recordTranscription(activeTranscriptionProvider, buf, result)
+    return result
   }
 
   /** Pick the right filename/mime from the buffer's magic bytes (WAV vs WebM). */

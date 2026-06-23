@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Soaken — Paleta de cores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#EDF3F2; --bg-grain:#E3ECEB; --surface:#F7FBFA; --surface-2:#E8F1F0; --raised:#FFFFFF;
+    --border:#D5E3E1; --border-strong:#BCD0CD;
+    --ink:#1F3330; --ink-2:#46615C; --muted:#7A938E;
+    --brand:#1F8A8A; --brand-ink:#16706F; --brand-soft:#D4EAE8;
+    --support:#C2683F; --support-soft:#F3E0D4;
+    --orig:#3E7BB6; --tts:#C98A2B; --you:#8B6FD4;
+    --good:#4F9D6B; --ok:#C98A2B; --bad:#C5564F;
+    --font-ui:"Hanken Grotesk",system-ui,sans-serif;
+    --font-display:"Newsreader",Georgia,serif;
+    --font-mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:var(--font-ui); color:var(--ink); background:var(--bg);
+    background-image:radial-gradient(rgba(31,51,48,.035) 1px,transparent 1px);
+    background-size:5px 5px;
+    -webkit-font-smoothing:antialiased; padding:56px 40px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  header{display:flex;align-items:center;gap:18px;margin-bottom:8px;}
+  .logo{width:60px;height:60px;border-radius:18px;background:linear-gradient(150deg,#34a3a3,var(--brand));
+    color:#fff;display:grid;place-items:center;font-family:var(--font-display);font-weight:600;font-size:32px;
+    box-shadow:0 8px 22px rgba(31,138,138,.36),inset 0 0 0 1px rgba(255,255,255,.2);}
+  h1{font-family:var(--font-display);font-weight:600;font-size:38px;letter-spacing:-.02em;line-height:1;}
+  .tagline{color:var(--muted);font-size:15px;margin-top:5px;}
+  .intro{color:var(--ink-2);font-size:15.5px;line-height:1.6;max-width:620px;margin:22px 0 46px;}
+  .intro b{color:var(--brand-ink);}
+
+  h2{font-family:var(--font-display);font-weight:600;font-size:23px;letter-spacing:-.01em;margin:46px 0 4px;
+     display:flex;align-items:center;gap:11px;}
+  h2 .em{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px;}
+  .sec-desc{color:var(--muted);font-size:14px;margin-bottom:20px;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(208px,1fr));gap:16px;}
+
+  .sw{background:var(--raised);border:1px solid var(--border);border-radius:16px;overflow:hidden;
+      box-shadow:0 1px 2px rgba(31,51,48,.05);transition:transform .15s,box-shadow .15s;}
+  .sw:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(31,51,48,.10);}
+  .sw .chip{height:96px;display:flex;align-items:flex-end;justify-content:space-between;padding:11px 13px;position:relative;}
+  .sw .chip .hex{font-family:var(--font-mono);font-size:12px;font-weight:500;padding:3px 8px;border-radius:7px;
+      background:rgba(255,255,255,.82);color:#1F3330;backdrop-filter:blur(4px);}
+  .sw .chip .hex.dk{background:rgba(20,30,28,.5);color:#fff;}
+  .sw .meta{padding:13px 14px 15px;}
+  .sw .nm{font-weight:600;font-size:14.5px;}
+  .sw .tok{font-family:var(--font-mono);font-size:11.5px;color:var(--brand-ink);margin-top:2px;}
+  .sw .use{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.45;}
+
+  /* usage map */
+  .map{background:var(--raised);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-top:8px;}
+  .map-row{display:flex;align-items:center;gap:16px;padding:15px 20px;border-bottom:1px solid var(--border);}
+  .map-row:last-child{border-bottom:none;}
+  .map-row:nth-child(even){background:var(--surface-2);}
+  .map-row .area{font-weight:600;font-size:14.5px;min-width:188px;}
+  .map-row .dots{display:flex;gap:7px;flex-wrap:wrap;flex:1;}
+  .dotc{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);
+     background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:3px 9px 3px 4px;}
+  .dotc i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.08);}
+
+  /* preview band */
+  .preview{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;}
+  .pv{border-radius:16px;border:1px solid var(--border);overflow:hidden;}
+  .pv .pv-h{padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--border);}
+  .pv .pv-b{padding:20px;background:var(--surface);}
+  .btnp{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:999px;padding:10px 18px;font-family:var(--font-ui);font-weight:600;font-size:13.5px;color:#fff;background:var(--brand);}
+  .btns{background:var(--support);}
+  .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:600;}
+  .footer{margin-top:60px;color:var(--muted);font-size:12.5px;text-align:center;}
+  .dark-note{background:#16302c;color:#cfe6e2;border-radius:16px;padding:18px 22px;font-size:13.5px;line-height:1.55;margin-top:8px;display:flex;gap:12px;align-items:flex-start;}
+  .dark-note b{color:#7fd3cc;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">S</div>
+    <div>
+      <h1>Soaken — Paleta</h1>
+      <div class="tagline">Tema padrão · <b style="color:var(--brand-ink)">Deep Soak</b> 💧 imersão aquática</div>
+    </div>
+  </header>
+  <p class="intro">
+    Toda cor do app vem de um <b>token</b> (variável CSS). Trocar o tema redefine os tokens — por isso o app inteiro muda de cor de uma vez.
+    Abaixo, cada cor com seu hex, o nome do token e <b>exatamente onde ela aparece</b>.
+  </p>
+
+  <!-- MARCA -->
+  <h2><span class="em" style="background:var(--brand-soft);color:var(--brand-ink)">◆</span> Marca &amp; Apoio</h2>
+  <div class="sec-desc">A identidade do Soaken. O teal conduz; a areia quente dá contraste acolhedor nos toques de ação.</div>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#1F8A8A"><span></span><span class="hex dk">#1F8A8A</span></div>
+      <div class="meta"><div class="nm">Teal Soak</div><div class="tok">--brand</div>
+      <div class="use">Logo, botões primários, links, abas ativas, dots de progresso, barra de revisão.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#16706F"><span></span><span class="hex dk">#16706F</span></div>
+      <div class="meta"><div class="nm">Teal profundo</div><div class="tok">--brand-ink</div>
+      <div class="use">Hover dos botões, textos sobre fundos claros de marca, ênfases.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#D4EAE8"><span></span><span class="hex">#D4EAE8</span></div>
+      <div class="meta"><div class="nm">Teal névoa</div><div class="tok">--brand-soft</div>
+      <div class="use">Fundo de dicas, pills de vocabulário, botões suaves, seleção de texto.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#C2683F"><span></span><span class="hex dk">#C2683F</span></div>
+      <div class="meta"><div class="nm">Areia quente</div><div class="tok">--support</div>
+      <div class="use">Cor de apoio: acentos, CTAs secundários, detalhes que precisam de calor.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#F3E0D4"><span></span><span class="hex">#F3E0D4</span></div>
+      <div class="meta"><div class="nm">Areia clara</div><div class="tok">--support-soft</div>
+      <div class="use">Fundo suave do apoio (badges e realces quentes).</div></div></div>
+  </div>
+
+  <!-- FUNDO -->
+  <h2><span class="em" style="background:var(--surface-2);color:var(--ink-2)">▦</span> Fundos &amp; Superfícies</h2>
+  <div class="sec-desc">Camadas off-white levemente azuladas — sensação de papel úmido, calmo. Nunca branco estéril, nunca preto.</div>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#EDF3F2"><span></span><span class="hex">#EDF3F2</span></div>
+      <div class="meta"><div class="nm">Fundo base</div><div class="tok">--bg</div>
+      <div class="use">Desktop, fundo das telas de login e do app.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#F7FBFA"><span></span><span class="hex">#F7FBFA</span></div>
+      <div class="meta"><div class="nm">Superfície</div><div class="tok">--surface</div>
+      <div class="use">Corpo das janelas, campos em foco.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#E8F1F0"><span></span><span class="hex">#E8F1F0</span></div>
+      <div class="meta"><div class="nm">Superfície 2</div><div class="tok">--surface-2</div>
+      <div class="use">Barras de título, barra lateral, linhas zebradas, chips.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#FFFFFF"><span></span><span class="hex">#FFFFFF</span></div>
+      <div class="meta"><div class="nm">Elevado</div><div class="tok">--raised</div>
+      <div class="use">Cards (frases, flashcards, providers), popovers de dicionário.</div></div></div>
+  </div>
+
+  <!-- TEXTO -->
+  <h2><span class="em" style="background:var(--ink);color:#fff">A</span> Texto</h2>
+  <div class="sec-desc">Verde-ardósia profundo no lugar do preto — mais suave para leitura longa.</div>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#1F3330"><span></span><span class="hex dk">#1F3330</span></div>
+      <div class="meta"><div class="nm">Tinta</div><div class="tok">--ink</div>
+      <div class="use">Títulos, frases capturadas, texto principal.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#46615C"><span></span><span class="hex dk">#46615C</span></div>
+      <div class="meta"><div class="nm">Tinta 2</div><div class="tok">--ink-2</div>
+      <div class="use">Traduções, subtítulos, rótulos de campo, texto secundário.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#7A938E"><span></span><span class="hex dk">#7A938E</span></div>
+      <div class="meta"><div class="nm">Apagado</div><div class="tok">--muted</div>
+      <div class="use">Legendas, placeholders, metadados, romanização discreta.</div></div></div>
+  </div>
+
+  <!-- BORDAS -->
+  <h2><span class="em" style="background:var(--border);color:var(--ink-2)">⊟</span> Bordas</h2>
+  <div class="sec-desc">Separadores suaves que mantêm tudo organizado sem peso visual.</div>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#D5E3E1"><span></span><span class="hex">#D5E3E1</span></div>
+      <div class="meta"><div class="nm">Borda</div><div class="tok">--border</div>
+      <div class="use">Contorno de cards, janelas, divisores de lista.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#BCD0CD"><span></span><span class="hex">#BCD0CD</span></div>
+      <div class="meta"><div class="nm">Borda forte</div><div class="tok">--border-strong</div>
+      <div class="use">Inputs, botões fantasma, contornos que precisam ser notados.</div></div></div>
+  </div>
+
+  <!-- AUDIO TRIO -->
+  <h2><span class="em" style="background:var(--orig);color:#fff">♪</span> Trio de Áudio</h2>
+  <div class="sec-desc">Cores <b>fixas</b> (não mudam com o tema) — são a linguagem do app. Cada fonte de som tem sempre a mesma cor.</div>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#3E7BB6"><span></span><span class="hex dk">#3E7BB6</span></div>
+      <div class="meta"><div class="nm">🔵 Original</div><div class="tok">--orig</div>
+      <div class="use">Áudio real da cena (voz do filme/série).</div></div></div>
+    <div class="sw"><div class="chip" style="background:#C98A2B"><span></span><span class="hex dk">#C98A2B</span></div>
+      <div class="meta"><div class="nm">🟡 TTS</div><div class="tok">--tts</div>
+      <div class="use">Voz sintetizada de referência (pronúncia ideal). Também o karaokê.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#8B6FD4"><span></span><span class="hex dk">#8B6FD4</span></div>
+      <div class="meta"><div class="nm">🟣 Você</div><div class="tok">--you</div>
+      <div class="use">A gravação da sua própria voz.</div></div></div>
+  </div>
+
+  <!-- FEEDBACK -->
+  <h2><span class="em" style="background:#e3f0e8;color:var(--good)">✓</span> Feedback &amp; Score</h2>
+  <div class="sec-desc">Notas de pronúncia e diff de palavras (acerto / quase / erro).</div>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#4F9D6B"><span></span><span class="hex dk">#4F9D6B</span></div>
+      <div class="meta"><div class="nm">Bom</div><div class="tok">--good</div>
+      <div class="use">Score ≥ 80%, palavras acertadas, senha forte, "Fácil".</div></div></div>
+    <div class="sw"><div class="chip" style="background:#C98A2B"><span></span><span class="hex dk">#C98A2B</span></div>
+      <div class="meta"><div class="nm">Médio</div><div class="tok">--ok</div>
+      <div class="use">Score 50–79%, palavra quase certa, "Difícil".</div></div></div>
+    <div class="sw"><div class="chip" style="background:#C5564F"><span></span><span class="hex dk">#C5564F</span></div>
+      <div class="meta"><div class="nm">Erro</div><div class="tok">--bad</div>
+      <div class="use">Score < 50%, palavra errada, status AO VIVO, fechar janela, "Errei".</div></div></div>
+  </div>
+
+  <!-- USAGE MAP -->
+  <h2><span class="em" style="background:var(--brand);color:#fff">⌖</span> Onde cada cor aparece</h2>
+  <div class="sec-desc">Mapa rápido por parte do app.</div>
+  <div class="map">
+    <div class="map-row"><div class="area">Barra flutuante</div><div class="dots">
+      <span class="dotc"><i style="background:#16302c"></i>fundo vidro (tinge da marca)</span>
+      <span class="dotc"><i style="background:#1F8A8A"></i>linha ao vivo</span>
+      <span class="dotc"><i style="background:#C5564F"></i>AO VIVO / gravar</span>
+      <span class="dotc"><i style="background:#3E7BB6"></i><i style="background:#C98A2B"></i><i style="background:#8B6FD4"></i>trio de áudio</span>
+    </div></div>
+    <div class="map-row"><div class="area">Dock</div><div class="dots">
+      <span class="dotc"><i style="background:#16302c"></i>fundo translúcido</span>
+      <span class="dotc"><i style="background:#1F8A8A"></i>logo S</span>
+    </div></div>
+    <div class="map-row"><div class="area">Janelas (título)</div><div class="dots">
+      <span class="dotc"><i style="background:#E8F1F0"></i>barra de título</span>
+      <span class="dotc"><i style="background:#1F8A8A"></i>Início</span>
+      <span class="dotc"><i style="background:#3E7BB6"></i>Tutor Board</span>
+      <span class="dotc"><i style="background:#8B6FD4"></i>Revisão</span>
+      <span class="dotc"><i style="background:#C5564F"></i>fechar</span>
+    </div></div>
+    <div class="map-row"><div class="area">Tutor Board</div><div class="dots">
+      <span class="dotc"><i style="background:#FFFFFF"></i>card</span>
+      <span class="dotc"><i style="background:#1F3330"></i>frase</span>
+      <span class="dotc"><i style="background:#D4EAE8"></i>dica / vocab</span>
+      <span class="dotc"><i style="background:#C98A2B"></i>karaokê ativo</span>
+    </div></div>
+    <div class="map-row"><div class="area">Dashboard</div><div class="dots">
+      <span class="dotc"><i style="background:#E8F1F0"></i>barra lateral</span>
+      <span class="dotc"><i style="background:#1F8A8A"></i>streak / due / CTA</span>
+      <span class="dotc"><i style="background:#C5564F"></i>palavras que erro</span>
+    </div></div>
+    <div class="map-row"><div class="area">Revisão (flashcards)</div><div class="dots">
+      <span class="dotc"><i style="background:#FFFFFF"></i>card</span>
+      <span class="dotc"><i style="background:#1F8A8A"></i>progresso / aba ativa</span>
+      <span class="dotc"><i style="background:#4F9D6B"></i>Fácil</span>
+      <span class="dotc"><i style="background:#C98A2B"></i>Difícil</span>
+      <span class="dotc"><i style="background:#C5564F"></i>Errei</span>
+    </div></div>
+    <div class="map-row"><div class="area">Configurações</div><div class="dots">
+      <span class="dotc"><i style="background:#1F8A8A"></i>provider configurado</span>
+      <span class="dotc"><i style="background:#4F9D6B"></i>✓ configurado</span>
+      <span class="dotc"><i style="background:#C2683F"></i>links externos</span>
+    </div></div>
+    <div class="map-row"><div class="area">Login / Criar conta</div><div class="dots">
+      <span class="dotc"><i style="background:#1F8A8A"></i>logo / botão / seletor</span>
+      <span class="dotc"><i style="background:#C5564F"></i>senha fraca</span>
+      <span class="dotc"><i style="background:#C98A2B"></i>senha média</span>
+      <span class="dotc"><i style="background:#4F9D6B"></i>senha forte</span>
+    </div></div>
+  </div>
+
+  <!-- PREVIEW -->
+  <h2><span class="em" style="background:var(--surface-2);color:var(--brand-ink)">▶</span> Em contexto</h2>
+  <div class="sec-desc">Como os tokens se combinam.</div>
+  <div class="preview">
+    <div class="pv"><div class="pv-h">Botões</div><div class="pv-b" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <button class="btnp">Primário</button>
+      <button class="btnp btns">Apoio</button>
+      <span class="pill" style="background:var(--brand-soft);color:var(--brand-ink)">suave</span>
+    </div></div>
+    <div class="pv"><div class="pv-h">Score &amp; diff</div><div class="pv-b" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <span class="pill" style="background:#e3f0e8;color:var(--good)">86%</span>
+      <span class="pill" style="background:#f4dcda;color:var(--bad)">있을까</span>
+      <span class="pill" style="background:#e3f0e8;color:var(--good)">다시</span>
+      <span class="pill" style="background:#f6ecd8;color:#9a6a1e">quase</span>
+    </div></div>
+    <div class="pv"><div class="pv-h">Trio de áudio</div><div class="pv-b" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <span class="pill" style="background:#e4eef7;color:#3E7BB6">● Original</span>
+      <span class="pill" style="background:#f6ecd8;color:#9a6a1e">● TTS</span>
+      <span class="pill" style="background:#ece5f8;color:#6b51b0">● Você</span>
+    </div></div>
+    <div class="pv"><div class="pv-h">Card de frase</div><div class="pv-b" style="background:#fff;">
+      <div style="font-family:var(--font-display);font-size:21px;color:var(--ink);">우리 다시 시작할 수 있을까?</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:4px;">uri dasi sijakhal su isseulkka?</div>
+      <div style="margin-top:10px;background:var(--brand-soft);color:var(--brand-ink);border-radius:9px;padding:8px 11px;font-size:12.5px;">💡 Dica de gramática aparece aqui.</div>
+    </div></div>
+  </div>
+
+  <div class="dark-note">
+    <span style="font-size:20px;">💧</span>
+    <div><b>Sobre a barra flutuante escura:</b> ela não é preta — é um vidro fosco que se <b>tinge da paleta</b> (no Soaken vira um teal-petróleo bem escuro, <span style="font-family:var(--font-mono)">~#16302c</span>). Isso mantém legibilidade sobre o vídeo sem o peso do preto puro. Há ainda os modos <b>clara</b> e <b>marca</b> nos Tweaks.</div>
+  </div>
+
+  <div class="footer">Soaken · Deep Soak — todos os tokens definidos em <span style="font-family:var(--font-mono)">styles.css</span> sob <span style="font-family:var(--font-mono)">[data-theme="soaken"]</span></div>
+</div>
+</body>
+</html>

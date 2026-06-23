@@ -1,10 +1,13 @@
-import type { AppSettings, ProviderId, WindowName, SessionAttempt, WordCue, TokenUsageRecord } from '../types'
+import type { AppSettings, ProviderId, WindowName, SessionAttempt, WordCue, TokenUsageRecord, NativePronunciation } from '../types'
 
 export const windowAPI = {
   minimize: () => window.api.window.minimize(),
   close: () => window.api.window.close(),
   hide: () => window.api.window.hide(),
   show: (name: WindowName) => window.api.window.show(name),
+  toggle: (name: WindowName) => window.api.window.toggle(name),
+  hideBars: () => window.api.window.hideBars(),
+  showBars: () => window.api.window.showBars(),
   openReview: (lang?: string) => window.api.window.openReview(lang),
   pendingReviewLang: (): Promise<string | null> => window.api.window.pendingReviewLang(),
   onboardingComplete: () => window.api.window.onboardingComplete(),
@@ -52,6 +55,19 @@ export const tutorAPI = {
 
 export const ttsAPI = {
   speak: (text: string, lang: string) => window.api.tts.speak(text, lang),
+  speakVariant: (text: string, voice: string, lang?: string) => window.api.tts.speakVariant(text, voice, lang),
+}
+
+export const pronunciationAPI = {
+  native: (word: string, lang: string): Promise<{ ok: boolean; items: NativePronunciation[]; error?: string }> =>
+    window.api.pronunciation.native(word, lang),
+  audio: (url: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> =>
+    window.api.pronunciation.audio(url),
+}
+
+export const forvoAPI = {
+  setKey: (key: string): Promise<{ ok: boolean }> => window.api.forvo.setKey(key),
+  hasKey: (): Promise<boolean> => window.api.forvo.hasKey(),
 }
 
 export const listeningAPI = {
@@ -89,6 +105,7 @@ export const storeAPI = {
   mistakes:       (lang: string) => window.api.store.mistakes(lang),
   recordTokenUsage: (usage: Omit<TokenUsageRecord, 'id' | 'at'> & { at?: number }) => window.api.store.recordTokenUsage(usage),
   tokenUsageSummary: (feature?: TokenUsageRecord['feature']) => window.api.store.tokenUsageSummary(feature),
+  usageEvents: () => window.api.store.usageEvents(),
 }
 
 export const onChannel = (

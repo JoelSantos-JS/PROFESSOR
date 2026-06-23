@@ -5,18 +5,26 @@ import { floatingBarMode } from '../lib/floatingBar'
 import { uiText, appLanguage, type AppLanguage } from '../lib/uiLanguage'
 import { UiLangProvider, useT } from '../lib/uiLangContext'
 import { isVoiced, peakLevel } from '../lib/audio'
+import { shouldRunInterim, resolveFinalText } from '../lib/interimTranscription'
+import { createDrainController, type DrainController } from '../lib/utteranceQueue'
+import { isLikelyDuplicate } from '../lib/transcriptDedup'
 import { diffWords, scoreFromDiff } from '../lib/text'
 import { onSentence, onPracticeDone, onAbort, INITIAL_MONITOR, type MonitorState } from '../lib/monitor'
 import { usePractice, practiceMaxMs, blobToDataUrl } from '../hooks/usePractice'
 import { decodeBufferToMono } from '../lib/decodeAudio'
 import { encodeWav } from '../lib/wav'
+import { normalizeSamples } from '../lib/audioNormalize'
 
-/** Re-encode a recorded blob to clean WAV (for reliable word timestamps and slicing). */
+/**
+ * Re-encode a recorded blob to clean WAV (for reliable word timestamps and slicing) and
+ * NORMALIZE quiet speech so Whisper reads it better (the gate before this already rejected
+ * silence/noise, so amplifying here is safe and only helps accuracy).
+ */
 async function toWavOrRaw(blob: Blob): Promise<{ buffer: ArrayBuffer; mimeType: string }> {
   const raw = await blob.arrayBuffer()
   const decoded = await decodeBufferToMono(raw)
   return decoded
-    ? { buffer: encodeWav([decoded.samples], decoded.sampleRate), mimeType: 'audio/wav' }
+    ? { buffer: encodeWav([normalizeSamples(decoded.samples)], decoded.sampleRate), mimeType: 'audio/wav' }
     : { buffer: raw, mimeType: blob.type || 'audio/webm' }
 }
 import DiffView from '../components/DiffView'
@@ -25,7 +33,9 @@ import WordDrill from '../components/WordDrill'
 import { playClip } from '../lib/playClip'
 import type { SessionAttempt, DiffToken, WordCue } from '../types'
 
-type State = 'idle' | 'listening' | 'processing'
+type State = 'idle' | 'listening'
+
+interface QueuedUtterance { blob: Blob; mimeType: string; liveText: string; utterId: number }
 
 function formatSessionTime(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000))
@@ -36,18 +46,21 @@ function formatSessionTime(ms: number): string {
 }
 
 const VAD_TICK_MS    = 80    // how often the VAD samples the analyser
-const SILENCE_END_MS = 1450  // wait for a real pause before closing a sentence
-const MIN_SPEECH_MS  = 650
-const MAX_SPEECH_MS  = 20_000
+const SILENCE_END_MS = 1050  // pausa p/ fechar a frase — menor = texto aparece mais cedo (menos atraso)
+const MIN_SPEECH_MS  = 450   // pega palavra curta real; o gate de energia (MIN_PEAK) é que evita alucinar
+const MAX_SPEECH_MS  = 12_000  // fala longa/contínua é fechada antes (narração rápida não acumula atraso)
 const IDLE_TRIM_MS   = 1600  // restart the recorder after this much idle silence (trim leading silence)
-const MIN_PEAK       = 26    // utterance must peak above this to count as real speech
+const MIN_PEAK       = 26    // utterance must peak above this to count as real speech (gate anti-alucinação)
 const VAD_THRESHOLD  = 16    // deviation from 128 to count a sample as voiced (lower = catches soft speech)
 const VAD_MIN_RATIO  = 0.055 // fraction of samples that must be voiced
+const TIMESLICE_MS   = 600   // recorder flushes chunks this often → enables live (interim) transcription
+const INTERIM_MS     = 850   // re-transcribe the in-progress utterance at most this often (live typing)
 
 export default function FloatingBar() {
   const [state, setState]         = useState<State>('idle')
-  const [transcript, setTranscript] = useState('')
   const [lines, setLines]         = useState<string[]>([])
+  const [interim, setInterim]     = useState('')   // live (in-progress) transcription of the current utterance
+  const [transcribing, setTranscribing] = useState(false)  // queue is draining (finalizing utterances)
   const [error, setError]         = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'transcricao' | 'sessao'>('transcricao')
   const [attempts, setAttempts]   = useState<SessionAttempt[]>([])
@@ -85,14 +98,22 @@ export default function FloatingBar() {
   // files (Whisper/ffmpeg rejects spliced timeslice chunks).
   const vadTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const segChunksRef    = useRef<Blob[]>([])             // chunks of the current recorder segment
+  const startSegmentRef = useRef<(() => void) | null>(null)  // p/ reiniciar o gravador no resume
   const pendingActionRef = useRef<'transcribe' | 'discard' | null>(null)
   const isSpeaking      = useRef(false)
   const lastVoiceRef    = useRef(0)                       // last time speech was heard
   const speechStartRef  = useRef<number | null>(null)
   const segStartRef     = useRef(0)                       // when current segment started recording
   const utterPeakRef    = useRef(0)  // peak energy seen during current utterance
-  const busyRef         = useRef(false)
+  const queueRef        = useRef<DrainController<QueuedUtterance> | null>(null)  // serializes finalization
   const pausedRef       = useRef(false) // true while practice recording is active
+
+  // ── Live (interim) transcription ──────────────────────────────────────────
+  const mimeTypeRef       = useRef<string>('audio/webm')
+  const interimBusyRef    = useRef(false)   // an interim request is in flight
+  const lastInterimAtRef  = useRef(0)       // when the last interim was fired
+  const utterIdRef        = useRef(0)       // bumps each utterance → rejects stale interim results
+  const liveTextRef       = useRef('')      // latest live text of the current utterance (fallback if final fails)
 
   const setStateSynced = useCallback((s: State) => {
     stateRef.current = s
@@ -114,55 +135,51 @@ export default function FloatingBar() {
     isSpeaking.current = false
     speechStartRef.current = null
     utterPeakRef.current = 0
-    busyRef.current = false
+    interimBusyRef.current = false
+    liveTextRef.current = ''
+    queueRef.current?.clear()
+    setInterim('')
+    setTranscribing(false)
     if (earlyPausedRef.current) { mediaAPI.resume(); earlyPausedRef.current = false }
   }, [])
 
-  const transcribeChunks = useCallback(async (chunks: Blob[], mimeType: string) => {
-    if (busyRef.current || chunks.length === 0 || stateRef.current === 'idle') {
-      // Dropped a flush we'd early-paused for → don't leave the video stuck
-      if (earlyPausedRef.current) { mediaAPI.resume(); earlyPausedRef.current = false }
-      return
-    }
-    busyRef.current = true
-    setStateSynced('processing')
-
-    const blob = new Blob(chunks, { type: mimeType })
+  // Transcreve UMA fala finalizada e fixa a linha. Sem guarda de "ocupado" aqui — a serialização
+  // é da fila (drainQueue), pra NUNCA descartar uma fala que terminou durante o processamento de outra.
+  const processUtterance = useCallback(async (item: QueuedUtterance) => {
     let startedPractice = false
     try {
       // Re-encode to WAV — MediaRecorder's streaming WebM has no container
       // duration, which makes Whisper drop word-level timestamps (no karaoke /
       // word slicing). A clean WAV restores them. Falls back to the raw blob.
-      const { buffer, mimeType: playableMimeType } = await toWavOrRaw(blob)
-      const result = await audioAPI.transcribe(buffer)
-      if (result.error) {
-        setError(result.error)
-      } else if (result.text) {
-        const text = result.text.trim()
-        // Skip exact repeats (common hallucination signature)
-        if (text && text !== lastLineRef.current) {
-          lastLineRef.current = text
-          transcriptLangRef.current = result.language ?? ''
-          sessionLangRef.current = result.language ?? sessionLangRef.current
-          sessionLinesRef.current += 1
-          sessionPreviewRef.current = [...sessionPreviewRef.current, text].slice(-5)
-          // Keep the ORIGINAL captured audio so it can be replayed (in-memory data URL)
-          const originalAudioUrl = await blobToDataUrl(new Blob([buffer], { type: playableMimeType }))
-          lastAudioRef.current = originalAudioUrl
-          lastCuesRef.current = result.cues ?? []
-          setTranscript(text)
-          setLines(prev => [...prev, text].slice(-400))  // bound the transcript feed
-          setError(null)
-          tutorAPI.analyze(text, result.language ?? '', originalAudioUrl, result.cues).catch(console.error)
+      const { buffer, mimeType: playableMimeType } = await toWavOrRaw(item.blob)
+      // Dá a última linha como CONTEXTO (prompt) → Whisper acerta mais palavras/nomes recorrentes
+      // e mantém continuidade. temperatura 0 + filtro anti-alucinação seguram o "eco" do prompt.
+      const result = await audioAPI.transcribe(buffer, lastLineRef.current || undefined)
+      // Se o final falhar/vier vazio, FIXA a prévia ao vivo (não perde o que apareceu, e ainda vai pro tutor).
+      const text = resolveFinalText(result.text ?? '', item.liveText)
+      if (!text) {
+        if (result.error) setError(result.error)
+      } else if (!isLikelyDuplicate(text, lastLineRef.current)) {  // só pula repetição CURTA (alucinação); mantém repetição longa real
+        lastLineRef.current = text
+        transcriptLangRef.current = result.language ?? transcriptLangRef.current
+        sessionLangRef.current = result.language ?? sessionLangRef.current
+        sessionLinesRef.current += 1
+        sessionPreviewRef.current = [...sessionPreviewRef.current, text].slice(-5)
+        // Keep the ORIGINAL captured audio so it can be replayed (in-memory data URL)
+        const originalAudioUrl = await blobToDataUrl(new Blob([buffer], { type: playableMimeType }))
+        lastAudioRef.current = originalAudioUrl
+        lastCuesRef.current = result.cues ?? []
+        setLines(prev => [...prev, text].slice(-400))  // bound the transcript feed
+        setError(null)
+        tutorAPI.analyze(text, result.language ?? transcriptLangRef.current, originalAudioUrl, result.cues).catch(console.error)
 
-          // Auto-practice: video was already paused at sentence-end; show overlay
-          const { state, action } = onSentence(monitorRef.current, text, autoModeRef.current)
-          monitorRef.current = state
-          if (action === 'pause-and-practice') {
-            await mediaAPI.pause()  // idempotent — already paused early
-            setPracticeSentence(state.current)
-            startedPractice = true
-          }
+        // Auto-practice: video was already paused at sentence-end; show overlay
+        const { state, action } = onSentence(monitorRef.current, text, autoModeRef.current)
+        monitorRef.current = state
+        if (action === 'pause-and-practice') {
+          await mediaAPI.pause()  // idempotent — already paused early
+          setPracticeSentence(state.current)
+          startedPractice = true
         }
       }
     } catch (err) {
@@ -172,10 +189,48 @@ export default function FloatingBar() {
       // resume it so playback isn't left stuck.
       if (earlyPausedRef.current && !startedPractice) mediaAPI.resume()
       earlyPausedRef.current = false
-      busyRef.current = false
-      if ((stateRef.current as State) !== 'idle') setStateSynced('listening')
+      // Limpa a prévia ao vivo só se NENHUMA fala nova começou desde esta (senão a nova é a dona dela).
+      if (item.utterId === utterIdRef.current) setInterim('')
     }
-  }, [setStateSynced])
+  }, [])
+
+  // Fila (criada uma vez): drena em ORDEM, uma por vez, e nunca descarta. `processRef` mantém o
+  // processador atualizado sem recriar a fila a cada render.
+  const processRef = useRef(processUtterance)
+  useEffect(() => { processRef.current = processUtterance }, [processUtterance])
+  if (!queueRef.current) {
+    queueRef.current = createDrainController<QueuedUtterance>({
+      process: item => processRef.current(item),
+      active: () => stateRef.current !== 'idle',
+      onBusyChange: setTranscribing,
+    })
+  }
+
+  const enqueueUtterance = useCallback((blob: Blob, mimeType: string) => {
+    queueRef.current?.enqueue({ blob, mimeType, liveText: liveTextRef.current, utterId: utterIdRef.current })
+  }, [])
+
+  // Transcrição "ao vivo": re-transcreve o trecho-em-curso (chunks acumulados desde o início da fala,
+  // = WebM válido) e atualiza a prévia. Best-effort: erros são ignorados, e resultados obsoletos
+  // (fala já trocou/terminou) são descartados pela checagem de utterId + isSpeaking.
+  const transcribeInterim = useCallback(async (utterId: number) => {
+    if (interimBusyRef.current) return
+    const chunks = segChunksRef.current
+    if (chunks.length === 0) return
+    const blob = new Blob(chunks, { type: mimeTypeRef.current })
+    if (blob.size < 1500) return   // áudio curto demais p/ valer a pena
+    interimBusyRef.current = true
+    try {
+      const { buffer } = await toWavOrRaw(blob)
+      const result = await audioAPI.transcribe(buffer)
+      if (utterId === utterIdRef.current && isSpeaking.current && stateRef.current !== 'idle' && !result.error) {
+        const text = (result.text ?? '').trim()
+        if (text) { liveTextRef.current = text; setInterim(text) }
+      }
+    } catch { /* interim é best-effort */ } finally {
+      interimBusyRef.current = false
+    }
+  }, [])
 
   const startListening = useCallback(async () => {
     setError(null)
@@ -186,6 +241,11 @@ export default function FloatingBar() {
       // recorder (TutorBoard) and goes to the "Sessão" tab instead.
       const sysStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
       sysStream.getVideoTracks().forEach(t => t.stop())
+      // Áudio CRU: desliga o "processamento" do navegador (ganho automático / supressão de ruído /
+      // cancelamento de eco) — pensados p/ microfone, eles distorcem áudio de sistema limpo e pioram
+      // a transcrição. applyConstraints é best-effort (não re-pede permissão; ignora se não suportado).
+      sysStream.getAudioTracks().forEach(t =>
+        t.applyConstraints({ autoGainControl: false, echoCancellation: false, noiseSuppression: false } as MediaTrackConstraints).catch(() => {}))
 
       // ── Audio graph ──────────────────────────────────────────────────
       // source ─┬─► analyser            (raw signal → VAD, untouched thresholds)
@@ -231,6 +291,7 @@ export default function FloatingBar() {
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm'
+      mimeTypeRef.current = mimeType
 
       // ── Segment recorder ─────────────────────────────────────────────
       // Records continuously into ONE segment; on utterance end we stop it
@@ -248,13 +309,17 @@ export default function FloatingBar() {
           const blob = new Blob(segChunksRef.current, { type: mimeType })
           segChunksRef.current = []
           if (action === 'transcribe' && blob.size > 1000) {
-            transcribeChunks([blob], mimeType)
+            enqueueUtterance(blob, mimeType)  // entra na fila — NUNCA descarta (resolve o "pulou frases")
+          } else {
+            setInterim('')  // descartado → tira a prévia ao vivo
           }
-          if (stateRef.current !== 'idle') startSegment()  // ready for next utterance
+          // Não reinicia enquanto pausado (senão captura o áudio que vamos tocar); o resume reinicia.
+          if (stateRef.current !== 'idle' && !pausedRef.current) startSegment()
         }
         rec.onerror = () => { setError(tc('recorderError')); setStateSynced('idle'); stopAll() }
-        rec.start()
+        rec.start(TIMESLICE_MS)  // entrega chunks periodicamente → permite transcrição ao vivo
       }
+      startSegmentRef.current = startSegment
 
       // ── VAD loop (independent of the recorder) ───────────────────────
       const tick = () => {
@@ -273,9 +338,19 @@ export default function FloatingBar() {
             isSpeaking.current = true
             speechStartRef.current = now
             utterPeakRef.current = 0
+            utterIdRef.current += 1          // nova fala → invalida interinas antigas
+            lastInterimAtRef.current = now   // não dispara interim no 1º instante (pouco áudio)
+            liveTextRef.current = ''         // prévia fresca p/ esta fala
+            setInterim('')                   // limpa a prévia da fala anterior ao começar uma nova
           }
           lastVoiceRef.current = now
           if (peak > utterPeakRef.current) utterPeakRef.current = peak
+
+          // Transcrição ao vivo: re-transcreve o trecho-em-curso a cada ~INTERIM_MS enquanto fala
+          if (shouldRunInterim({ speaking: true, busy: interimBusyRef.current, now, lastRunAt: lastInterimAtRef.current, intervalMs: INTERIM_MS })) {
+            lastInterimAtRef.current = now
+            transcribeInterim(utterIdRef.current)
+          }
 
           // Force-flush very long utterances
           if (now - (speechStartRef.current ?? now) >= MAX_SPEECH_MS) {
@@ -322,7 +397,7 @@ export default function FloatingBar() {
       setSessionStartedAt(null)
       setStateSynced('idle')
     }
-  }, [setStateSynced, stopAll, transcribeChunks])
+  }, [setStateSynced, stopAll, enqueueUtterance, transcribeInterim])
 
   const stopListening = useCallback(() => {
     setStateSynced('idle')
@@ -391,17 +466,29 @@ export default function FloatingBar() {
   }, [toggle])
 
   useEffect(() => {
-    const unPause  = onChannel('listening:pause',  () => { pausedRef.current = true })
+    const unPause  = onChannel('listening:pause',  () => {
+      if (pausedRef.current) return
+      pausedRef.current = true   // tick para de rodar; o gravador NÃO reinicia (onstop checa pausedRef)
+      // FLUSH do trecho-até-aqui: se já houve fala de verdade, transcreve (não perde a frase em
+      // andamento ao pausar/tocar um áudio); senão descarta. Depois para de gravar durante a pausa.
+      const rec = recorderRef.current
+      if (rec?.state === 'recording') {
+        const speechDur = Date.now() - (speechStartRef.current ?? Date.now())
+        const ok = isSpeaking.current && speechDur >= MIN_SPEECH_MS && utterPeakRef.current >= MIN_PEAK
+        pendingActionRef.current = ok ? 'transcribe' : 'discard'
+        isSpeaking.current = false
+        rec.stop()
+      }
+    })
     const unResume = onChannel('listening:resume', () => {
+      if (!pausedRef.current) return
       pausedRef.current = false
-      // discard whatever was captured while paused; start a fresh segment
       isSpeaking.current   = false
       speechStartRef.current  = null
       lastVoiceRef.current = Date.now()
-      if (recorderRef.current?.state === 'recording') {
-        pendingActionRef.current = 'discard'
-        recorderRef.current.stop()
-      }
+      setInterim('')
+      // Retoma a captura num segmento NOVO (o flush da pausa já parou o gravador anterior).
+      if (stateRef.current !== 'idle' && recorderRef.current?.state !== 'recording') startSegmentRef.current?.()
     })
     return () => { unPause(); unResume() }
   }, [])
@@ -427,26 +514,25 @@ export default function FloatingBar() {
   }, [])
 
   const isListening  = state === 'listening'
-  const isProcessing = state === 'processing'
   const sessionTime = sessionStartedAt ? formatSessionTime(sessionNow - sessionStartedAt) : '00:00:00'
 
   // A janela abre COMPACTA (vazia/ociosa) e cresce para CHEIA só quando há conteúdo a mostrar
   // (escuta/processamento, treino, ou um feed com itens). Pede o tamanho ao processo main.
   useEffect(() => {
     floatingBarAPI.setMode(floatingBarMode({
-      busy: state !== 'idle',
+      busy: state !== 'idle' || transcribing,
       practicing: !!practiceSentence,
       tab: activeTab,
       lineCount: lines.length,
       attemptCount: attempts.length,
     }))
-  }, [state, practiceSentence, activeTab, lines.length, attempts.length])
+  }, [state, transcribing, practiceSentence, activeTab, lines.length, attempts.length])
 
   return (
     <UiLangProvider value={uiLang}>
     <div className="flex flex-col h-screen max-h-screen select-none overflow-hidden rounded-[20px] border border-white/15 text-[#EAF0EA] shadow-[var(--sh-bar)]"
       style={{
-        background: 'linear-gradient(180deg, rgba(48,34,26,.94), rgba(38,27,21,.96))',
+        background: 'linear-gradient(180deg, rgba(28,58,52,.94), rgba(20,44,40,.96))',
         backdropFilter: 'blur(26px) saturate(160%)',
       }}
     >
@@ -498,7 +584,7 @@ export default function FloatingBar() {
           ].join(' ')}>
             {isListening
               ? <><span className="live-dot" />{t('live')}</>
-              : isProcessing
+              : transcribing
               ? <><Loader2 size={9} className="animate-spin" />PROC...</>
               : <><span className="w-1.5 h-1.5 rounded-full bg-white/30" />OFF</>}
           </div>
@@ -534,7 +620,8 @@ export default function FloatingBar() {
       ) : (
         <TranscriptList
           lines={lines}
-          currentTranscript={isListening || isProcessing ? transcript : null}
+          interim={interim}
+          processing={transcribing}
           error={error}
         />
       )}
@@ -549,19 +636,14 @@ export default function FloatingBar() {
       >
         <button
           onClick={toggle}
-          disabled={isProcessing}
           className={[
             'pill-button w-full min-w-0 px-2.5 py-2 text-[12px] transition-all overflow-hidden',
             isListening
               ? 'bg-danger text-white hover:bg-danger/90'
-              : isProcessing
-              ? 'bg-warning/20 text-[#f4cf93] cursor-default'
               : 'bg-white/10 text-white hover:bg-white/15',
           ].join(' ')}
         >
-          {isProcessing
-            ? <><Loader2 size={12} className="animate-spin shrink-0" /><span className="truncate">{t('processing')}</span></>
-            : isListening
+          {isListening
             ? <><MicOff size={12} className="shrink-0" /><span className="truncate">{t('stop')}</span></>
             : <><Mic size={12} className="shrink-0" /><span className="truncate">{t('listenStart')}</span></>}
         </button>
@@ -751,17 +833,23 @@ function TabBtn({ active, icon, label, onClick }: { active?: boolean; icon: Reac
 }
 
 // ── Transcript feed ───────────────────────────────────────────────────────────
-function TranscriptList({ lines, currentTranscript, error }: {
+// `interim` é a transcrição AO VIVO da fala em curso — aparece numa linha destacada com cursor
+// e vai sendo reescrita enquanto a pessoa fala; ao terminar, vira uma linha fixa em `lines`.
+export function TranscriptList({ lines, interim, processing, error }: {
   lines: string[]
-  currentTranscript: string | null
+  interim: string
+  processing: boolean
   error: string | null
 }) {
   const t = useT()
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Acompanha o final enquanto a prévia ao vivo cresce / chegam novas linhas.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [lines, currentTranscript])
+  }, [lines, interim, processing])
+
+  const showDots = processing && !interim  // finalizando sem prévia (ex.: interim falhou)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto py-3 px-3.5 space-y-2">
@@ -771,7 +859,7 @@ function TranscriptList({ lines, currentTranscript, error }: {
         </div>
       )}
 
-      {lines.length === 0 && !currentTranscript && !error && (
+      {lines.length === 0 && !interim && !processing && !error && (
         <div className="flex flex-col items-center justify-center h-full gap-1.5 text-white/40 py-3">
           <Mic size={20} className="opacity-30" />
           <p className="text-xs">{t('pressListenHint')}</p>
@@ -788,10 +876,25 @@ function TranscriptList({ lines, currentTranscript, error }: {
         </div>
       ))}
 
-      {currentTranscript && (
-        <div className="rounded-xl border border-primary/35 bg-primary/10 px-3 py-2.5">
+      {/* Linha ao vivo (transcrição em curso) */}
+      {interim && (
+        <div data-testid="interim-line" className="rounded-xl border border-primary/35 bg-primary/10 px-3 py-2.5">
           <p className="text-[10px] text-white/45 uppercase tracking-wider mb-1 font-semibold">{t('capturing')}</p>
-          <p className="text-sm text-white/70 leading-relaxed">{currentTranscript}</p>
+          <p className="text-sm text-white/80 leading-relaxed">
+            {interim}
+            <span className="inline-block w-[2px] h-[1em] align-text-bottom bg-primary/80 ml-0.5 animate-pulse" aria-hidden />
+          </p>
+        </div>
+      )}
+
+      {showDots && (
+        <div data-testid="processing-dots" className="rounded-xl border border-primary/35 bg-primary/10 px-3 py-2.5 flex items-center gap-2">
+          <span className="flex gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary/80 animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary/80 animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary/80 animate-bounce" />
+          </span>
+          <p className="text-[10px] text-white/45 uppercase tracking-wider font-semibold">{t('capturing')}</p>
         </div>
       )}
 

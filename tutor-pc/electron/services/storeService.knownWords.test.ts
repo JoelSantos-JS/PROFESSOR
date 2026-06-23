@@ -199,6 +199,21 @@ describe('StoreService - token usage', () => {
     expect(summary.monthTokens).toBe(500)
     expect(summary.todayTokens).toBe(300)
   })
+
+  it('grava provider/model/audioSeconds e getUsageEvents devolve eventos + sessoes', async () => {
+    const store = await freshStore()
+    store.recordTokenUsage({ feature: 'analysis', provider: 'groq', model: 'llama-3.3-70b-versatile', inputTokens: 800, outputTokens: 200, totalTokens: 1000 })
+    store.recordTokenUsage({ feature: 'transcription', provider: 'openai', model: 'whisper-1', audioSeconds: 42, inputTokens: 0, outputTokens: 0, totalTokens: 0 })
+    store.recordSession({ lineCount: 3, startedAt: 1_000, endedAt: 61_000 })  // 60s
+
+    const { events, sessions } = (await freshStore()).getUsageEvents()
+    expect(events).toHaveLength(2)
+    const analysis = events.find(e => e.feature === 'analysis')!
+    expect(analysis).toMatchObject({ provider: 'groq', model: 'llama-3.3-70b-versatile', totalTokens: 1000 })
+    const tx = events.find(e => e.feature === 'transcription')!
+    expect(tx).toMatchObject({ provider: 'openai', model: 'whisper-1', audioSeconds: 42 })
+    expect(sessions).toContainEqual({ startedAt: 1_000, endedAt: 61_000 })
+  })
 })
 
 describe('StoreService — capturedToday', () => {

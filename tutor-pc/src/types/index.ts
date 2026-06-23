@@ -1,4 +1,4 @@
-export type WindowName = 'auth' | 'dashboard' | 'floating-bar' | 'settings' | 'tutor-board' | 'review'
+export type WindowName = 'auth' | 'dashboard' | 'floating-bar' | 'settings' | 'tutor-board' | 'review' | 'dock'
 
 export interface VocabItem {
   word: string
@@ -39,6 +39,15 @@ export interface WordLookup {
 export interface SentenceVariation {
   text: string
   translation: string
+}
+
+// Pronúncia por nativo real (Forvo ou Wikimedia/Lingua Libre)
+export interface NativePronunciation {
+  url: string
+  source: 'forvo' | 'wikimedia'
+  country?: string
+  speaker?: string
+  attribution?: string
 }
 
 // Professor-IA de conversa
@@ -89,6 +98,8 @@ export interface MistakeRecord {
   lang: string
   count: number
   lastAt: number
+  sessionCount?: number
+  struggleSessions?: number
 }
 
 export interface LangStat {
@@ -107,14 +118,24 @@ export interface StoreStats {
   topMistakes: MistakeRecord[]
 }
 
+export type TokenUsageFeature = 'professor' | 'analysis' | 'lookup' | 'transcription' | 'variations' | 'decompose' | 'other'
+
 export interface TokenUsageRecord {
   id: string
   at: number
-  feature: 'professor' | 'analysis' | 'lookup' | 'other'
+  feature: TokenUsageFeature
   lang?: string
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  provider?: string
+  model?: string
+  audioSeconds?: number
+}
+
+export interface UsageEvents {
+  events: TokenUsageRecord[]
+  sessions: Array<{ startedAt: number; endedAt?: number }>
 }
 
 export interface TokenUsageSummary {
@@ -202,6 +223,9 @@ export interface IpcAPI {
     close: () => void
     hide: () => void
     show: (name: WindowName) => void
+    toggle: (name: WindowName) => void
+    hideBars: () => void
+    showBars: () => void
     openReview: (lang?: string) => void
     pendingReviewLang: () => Promise<string | null>
     onboardingComplete: () => void
@@ -240,6 +264,15 @@ export interface IpcAPI {
   }
   tts: {
     speak: (text: string, lang: string) => Promise<{ ok: boolean; dataUrl?: string; cues?: WordCue[]; provider?: TtsProviderId; cached?: boolean; error?: string }>
+    speakVariant: (text: string, voice: string, lang?: string) => Promise<{ ok: boolean; dataUrl?: string; cues?: WordCue[]; provider?: TtsProviderId; cached?: boolean; error?: string }>
+  }
+  pronunciation: {
+    native: (word: string, lang: string) => Promise<{ ok: boolean; items: NativePronunciation[]; error?: string }>
+    audio: (url: string) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>
+  }
+  forvo: {
+    setKey: (key: string) => Promise<{ ok: boolean }>
+    hasKey: () => Promise<boolean>
   }
   listening: {
     pause:  () => void
@@ -272,6 +305,7 @@ export interface IpcAPI {
     mistakes:       (lang: string) => Promise<MistakeRecord[]>
     recordTokenUsage: (usage: Omit<TokenUsageRecord, 'id' | 'at'> & { at?: number }) => Promise<{ ok: boolean }>
     tokenUsageSummary: (feature?: TokenUsageRecord['feature']) => Promise<TokenUsageSummary>
+    usageEvents: () => Promise<UsageEvents>
   }
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void
 }

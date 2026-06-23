@@ -17,7 +17,7 @@ export default function PronunciationProfileCard({ lang, uiLang = 'pt', onTrain 
   }, [lang])
 
   const profile = useMemo(
-    () => pronunciationProfile(lang, mistakes.map(m => ({ word: m.word, count: m.count }))),
+    () => pronunciationProfile(lang, mistakes.map(m => ({ word: m.word, count: m.count, struggleSessions: m.struggleSessions }))),
     [lang, mistakes],
   )
 
@@ -66,7 +66,7 @@ export default function PronunciationProfileCard({ lang, uiLang = 'pt', onTrain 
                   className="inline-flex items-center gap-1.5 rounded-lg bg-surface-2 border border-border px-2.5 py-1 text-sm hover:border-primary/50 transition-colors"
                 >
                   <span className="font-semibold text-foreground">{w.word}</span>
-                  <span className="text-[11px] text-danger/70 font-bold">{w.count}×</span>
+                  <span className="text-[11px] text-danger/70 font-bold">{((w.struggleSessions ?? 0) > 0 ? w.struggleSessions : w.count)}×</span>
                   <Volume2 size={12} className="text-muted" />
                 </button>
               ))}

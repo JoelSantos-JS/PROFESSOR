@@ -50,4 +50,6 @@ export function setupStoreHandlers(): void {
 
   ipcMain.handle('store:token-usage-summary', (_e, feature?: 'professor' | 'analysis' | 'lookup' | 'other') =>
     store.getTokenUsageSummary(Date.now(), feature))
+
+  ipcMain.handle('store:usage-events', () => store.getUsageEvents())
 }

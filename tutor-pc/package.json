@@ -12,6 +12,7 @@
     "test": "vitest run --reporter=verbose",
     "test:watch": "vitest --reporter=verbose",
     "preview": "vite preview",
+    "icons": "node scripts/gen-icons.mjs",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder"
   },
@@ -42,6 +43,8 @@
     "electron": "^42.2.0",
     "electron-builder": "^26.8.1",
     "jsdom": "^25.0.1",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.35.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",

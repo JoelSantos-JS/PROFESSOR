@@ -31,6 +31,8 @@ const h = vi.hoisted(() => {
 vi.mock('../services/electron', () => ({
   settingsAPI: { getAll: h.settingsGet, set: h.settingsSet },
   credentialsAPI: { list: h.credList, get: h.credGet, set: h.credSet, remove: h.credRemove, test: h.credTest },
+  forvoAPI: { hasKey: vi.fn(async () => false), setKey: vi.fn(async () => ({ ok: true })) },
+  storeAPI: { usageEvents: vi.fn(async () => ({ events: [], sessions: [] })) },
 }))
 
 import Settings from './Settings'

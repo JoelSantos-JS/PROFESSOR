@@ -8,7 +8,8 @@ import '@testing-library/jest-dom/vitest'
 vi.mock('../services/electron', () => ({
   audioAPI: { transcribe: vi.fn() },
   onChannel: vi.fn(() => () => {}),
-  ttsAPI: { speak: vi.fn(async () => ({ ok: false })) },
+  ttsAPI: { speak: vi.fn(async () => ({ ok: false })), speakVariant: vi.fn(async () => ({ ok: false })) },
+  pronunciationAPI: { native: vi.fn(async () => ({ ok: true, items: [] })), audio: vi.fn(async () => ({ ok: false })) },
   listeningAPI: { pause: vi.fn(), resume: vi.fn() },
   sessionAPI: { addAttempt: vi.fn() },
   tutorAPI: { decompose: vi.fn(async () => ({ ok: false })), lookup: vi.fn() },

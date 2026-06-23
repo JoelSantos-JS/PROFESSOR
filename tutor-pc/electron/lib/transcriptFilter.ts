@@ -16,6 +16,10 @@ export const HIGH_COMPRESSION = 2.4          // Whisper's repetition/hallucinati
 // audio that Whisper forces into garbled words, e.g. "Thank you deix toughest").
 export const BORDERLINE_NO_SPEECH = 0.4
 export const BORDERLINE_LOGPROB = -0.55
+// Transcrições MUITO curtas (≤2 palavras) sobre transiente/ruído (batida de mesa → "E aí") são o
+// caso clássico de alucinação. Aí basta um sinal MODERADO de "não-fala" pra reprovar.
+export const SHORT_TEXT_MAX_WORDS = 2
+export const SHORT_TEXT_NO_SPEECH = 0.33
 
 /** True when the segments look like music / ambient / forced-garbage rather than speech. */
 export function isNonSpeech(segments: WhisperSegment[]): boolean {
@@ -89,8 +93,20 @@ export function isHallucinationPhrase(text: string): boolean {
   return false
 }
 
+/** Média de no_speech_prob dos segmentos (0 se não houver). */
+function avgNoSpeechProb(segments: WhisperSegment[]): number {
+  if (!segments || segments.length === 0) return 0
+  return segments.reduce((s, x) => s + (x.no_speech_prob ?? 0), 0) / segments.length
+}
+
 /** Overall decision: should this Whisper result be discarded as non-speech? */
 export function shouldRejectTranscript(text: string, segments: WhisperSegment[]): boolean {
   if (isHallucinationPhrase(text)) return true
-  return isNonSpeech(segments)
+  if (isNonSpeech(segments)) return true
+  // Texto muito curto + qualquer sinal moderado de "não-fala" → provável alucinação sobre ruído.
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  if (words.length > 0 && words.length <= SHORT_TEXT_MAX_WORDS && avgNoSpeechProb(segments) >= SHORT_TEXT_NO_SPEECH) {
+    return true
+  }
+  return false
 }

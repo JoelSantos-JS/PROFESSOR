@@ -19,19 +19,26 @@ export function setupWindowHandlers(windowManager: WindowManager, onAuthComplete
   })
   ipcMain.on('window:hide', (event) => BrowserWindow.fromWebContents(event.sender)?.hide())
   ipcMain.on('window:show', (_event, name: WindowName) => windowManager.showWindow(name))
+  ipcMain.on('window:toggle', (_event, name: WindowName) => windowManager.toggleWindow(name))
 
-  ipcMain.on('app:onboarding-complete', () => {
+  // Esconder a barra do dock esconde o dock + a barra flutuante juntos; a bandeja restaura.
+  ipcMain.on('app:hide-bars', () => windowManager.hideBars())
+  ipcMain.on('app:show-bars', () => windowManager.showBars())
+
+  // Espaço de trabalho "dock-centric": ao abrir, mostra só o Dock + a barra de Transcrição
+  // (FloatingBar). O TutorBoard nasce oculto (recebe as análises); o Dashboard abre via Dock.
+  const openWorkspace = () => {
     windowManager.createWindow('floating-bar')
-    windowManager.createWindow('tutor-board')
-  })
+    windowManager.createWindow('tutor-board')   // startHidden — recebe eventos, aparece sob demanda
+    windowManager.createWindow('dock')
+  }
+
+  ipcMain.on('app:onboarding-complete', openWorkspace)
 
   ipcMain.on('app:auth-complete', (event) => {
     onAuthComplete?.()
-    windowManager.showWindow('dashboard')
-    if (isOnboarded()) {
-      windowManager.createWindow('floating-bar')
-      windowManager.createWindow('tutor-board')
-    }
+    if (isOnboarded()) openWorkspace()
+    else windowManager.showWindow('dashboard')   // 1º acesso: faz o onboarding no Dashboard
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
 

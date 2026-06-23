@@ -4,7 +4,7 @@
 
 import { baseLang } from './languages'
 
-export interface MistakeWord { word: string; count: number }
+export interface MistakeWord { word: string; count: number; struggleSessions?: number }
 export interface ProfileGroup { key: string; label: string; words: string[]; count: number }
 export interface PronunciationProfile {
   total: number          // nº de palavras erradas distintas
@@ -81,16 +81,24 @@ export function pronunciationProfile(lang: string, mistakes: MistakeWord[], topN
   const list = (mistakes ?? []).filter(m => m && m.word?.trim())
   const base = baseLang(lang)
 
-  const top = [...list]
-    .sort((a, b) => (b.count - a.count) || a.word.localeCompare(b.word))
+  // "Dificuldade constante por sessão" é o sinal forte. Se já houver alguma, o perfil passa a usá-la
+  // (e o ruído de erro-isolado pesa 0); senão, cai na frequência total (usuário ainda sem repetição).
+  const anyStrong = list.some(m => (m.struggleSessions ?? 0) > 0)
+  const weight = (m: MistakeWord): number => (anyStrong ? (m.struggleSessions ?? 0) : (m.count ?? 0))
+
+  const pool = anyStrong ? list.filter(m => (m.struggleSessions ?? 0) > 0) : list
+  const top = [...pool]
+    .sort((a, b) => (weight(b) - weight(a)) || (b.count - a.count) || a.word.localeCompare(b.word))
     .slice(0, topN)
 
   const buckets = new Map<string, { label: string; words: string[]; count: number }>()
   for (const m of list) {
+    const w = weight(m)
+    if (w <= 0) continue   // não infla os "sons" com palavras que nunca foram dificuldade real
     for (const b of classify(base, m.word)) {
       const cur = buckets.get(b.key) ?? { label: b.label, words: [], count: 0 }
       if (!cur.words.includes(m.word)) cur.words.push(m.word)
-      cur.count += m.count
+      cur.count += w
       buckets.set(b.key, cur)
     }
   }

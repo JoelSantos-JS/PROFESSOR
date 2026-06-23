@@ -105,12 +105,12 @@ export default function Auth() {
 
   return (
     <UiLangProvider value={uiLang}>
-    <div className="h-screen bg-[#FCF7F1] text-foreground flex flex-col overflow-hidden rounded-[18px] border border-border-strong shadow-[0_18px_45px_rgba(58,46,38,.18)]">
+    <div className="h-screen bg-surface text-foreground flex flex-col overflow-hidden rounded-[18px] border border-border-strong shadow-[0_18px_45px_rgba(20,40,36,.18)]">
       <TitleBar title={mode === 'login' ? t('signIn') : t('createAccount')} />
 
       <main className="flex-1 min-h-0 overflow-hidden px-6 pt-3 pb-2">
         <div className="flex flex-col items-center text-center">
-          <div className="w-[48px] h-[48px] rounded-[15px] bg-primary text-white grid place-items-center display-title text-[28px] shadow-[0_10px_22px_rgba(194,104,63,.32)] mb-2">
+          <div className="w-[48px] h-[48px] rounded-[15px] bg-primary text-white grid place-items-center display-title text-[28px] shadow-[0_10px_22px_rgba(31,138,138,.32)] mb-2">
             S
           </div>
           <h1 className="display-title text-[21px] leading-tight text-foreground">
@@ -257,7 +257,7 @@ export default function Auth() {
           <button
             type="submit"
             disabled={loading || !canSubmit}
-            className="mt-1.5 w-full h-[40px] rounded-lg bg-[#E2AD96] text-white text-[13px] font-black flex items-center justify-center gap-2 transition-colors hover:bg-primary disabled:hover:bg-[#E2AD96] disabled:opacity-100 disabled:cursor-not-allowed"
+            className="mt-1.5 w-full h-[40px] rounded-lg bg-[#5BB3B1] text-white text-[13px] font-black flex items-center justify-center gap-2 transition-colors hover:bg-primary disabled:hover:bg-[#5BB3B1] disabled:opacity-100 disabled:cursor-not-allowed"
           >
             {mode === 'login' ? <ArrowRight size={15} /> : <Check size={15} />}
             {loading ? t('pleaseWait') : mode === 'login' ? t('signIn') : t('createAccount')}

@@ -1,5 +1,7 @@
 import { CredentialsService } from './credentialsService'
 import { SettingsService } from './settingsService'
+import { StoreService, type TokenUsageFeature } from './storeService'
+import { chatModelFor, estimateTokens } from '../lib/usageRecording.js'
 import { buildSystemPrompt, buildLookupPrompt, buildVariationsPrompt, buildDecomposePrompt } from '../lib/tutorPrompt.js'
 import {
   buildProfessorSystemPrompt, parseProfessorTurn, sessionContext, trimHistory,
@@ -64,10 +66,24 @@ function formatProviderError(body: string): string {
 }
 
 export class TutorService {
+  private store = new StoreService()
+
   constructor(
     private credentials: CredentialsService,
     private settings: SettingsService,
   ) {}
+
+  // Registra o gasto estimado de uma chamada de chat (nunca quebra a feature se o tracking falhar).
+  private recordUsage(feature: TokenUsageFeature, provider: string, inputText: string, outputText: string, lang?: string): void {
+    try {
+      const inputTokens = estimateTokens(inputText)
+      const outputTokens = estimateTokens(outputText)
+      this.store.recordTokenUsage({
+        feature, provider, model: chatModelFor(provider), lang,
+        inputTokens, outputTokens, totalTokens: inputTokens + outputTokens,
+      })
+    } catch { /* ignore */ }
+  }
 
   async analyze(transcript: string, detectedLanguage: string): Promise<TutorAnalysis> {
     const { activeAiProvider, nativeLanguage } = this.settings.getAll()
@@ -77,7 +93,9 @@ export class TutorService {
       throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
     }
 
-    const raw = await this.callProvider(activeAiProvider, apiKey, transcript, detectedLanguage, nativeLanguage)
+    const prompt = buildSystemPrompt(detectedLanguage, nativeLanguage)
+    const raw = await this.dispatch(activeAiProvider, apiKey, transcript, prompt)
+    this.recordUsage('analysis', activeAiProvider, prompt + transcript, raw, detectedLanguage)
 
     try {
       const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; reading?: string; englishText?: string; translation?: string }
@@ -102,7 +120,9 @@ export class TutorService {
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const raw = await this.dispatch(activeAiProvider, apiKey, sentence, buildVariationsPrompt(sentence, lang, nativeLanguage))
+    const vprompt = buildVariationsPrompt(sentence, lang, nativeLanguage)
+    const raw = await this.dispatch(activeAiProvider, apiKey, sentence, vprompt)
+    this.recordUsage('variations', activeAiProvider, vprompt + sentence, raw, lang)
     try {
       const parsed = JSON.parse(raw) as { variations?: Array<{ text?: string; translation?: string }> }
       return (parsed.variations ?? [])
@@ -120,6 +140,7 @@ export class TutorService {
 
     const prompt = buildLookupPrompt(word, context, lang, nativeLanguage)
     const raw = await this.dispatch(activeAiProvider, apiKey, word, prompt)
+    this.recordUsage('lookup', activeAiProvider, prompt + word, raw, lang)
 
     try {
       const parsed = JSON.parse(raw) as { romanization?: string; reading?: string; pitchAccent?: number; meanings?: string[]; note?: string }
@@ -142,7 +163,9 @@ export class TutorService {
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const raw = await this.dispatch(activeAiProvider, apiKey, char, buildDecomposePrompt(char, lang, nativeLanguage))
+    const dprompt = buildDecomposePrompt(char, lang, nativeLanguage)
+    const raw = await this.dispatch(activeAiProvider, apiKey, char, dprompt)
+    this.recordUsage('decompose', activeAiProvider, dprompt + char, raw, lang)
     try {
       const parsed = JSON.parse(raw) as Partial<CharDecomposition>
       const components = Array.isArray(parsed.components)
@@ -189,10 +212,6 @@ export class TutorService {
     const userText = opts.userMessage?.trim() || 'Start the conversation: ask your first question about the context.'
     const raw = await this.dispatch(activeAiProvider, apiKey, userText, system)
     return parseProfessorTurn(raw)
-  }
-
-  private async callProvider(provider: string, apiKey: string, transcript: string, lang: string, native = 'pt'): Promise<string> {
-    return this.dispatch(provider, apiKey, transcript, buildSystemPrompt(lang, native))
   }
 
   private async dispatch(provider: string, apiKey: string, userText: string, prompt: string): Promise<string> {

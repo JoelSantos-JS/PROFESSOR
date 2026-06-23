@@ -135,4 +135,20 @@ describe('shouldRejectTranscript', () => {
     expect(shouldRejectTranscript('♪', [])).toBe(true)
     expect(shouldRejectTranscript('', [])).toBe(true)
   })
+
+  // Caso "E aí" sobre som de mesa: transcrição curta + sinal moderado de não-fala → alucinação.
+  it('rejeita texto curto (≤2 palavras) com no_speech moderado (ruído/transiente)', () => {
+    expect(shouldRejectTranscript('E aí', [{ no_speech_prob: 0.35, avg_logprob: -0.4 }])).toBe(true)
+    expect(shouldRejectTranscript('Hey', [{ no_speech_prob: 0.4, avg_logprob: -0.3 }])).toBe(true)
+  })
+
+  it('MANTÉM texto curto quando a confiança de fala é boa (no_speech baixo)', () => {
+    expect(shouldRejectTranscript('E aí', [{ no_speech_prob: 0.1, avg_logprob: -0.2 }])).toBe(false)
+    expect(shouldRejectTranscript('Olá mundo', [{ no_speech_prob: 0.2, avg_logprob: -0.3 }])).toBe(false)
+  })
+
+  it('NÃO aplica a regra de texto-curto em frases longas (>2 palavras)', () => {
+    // 5 palavras com no_speech moderado não cai na regra de curto (segue só os limiares normais)
+    expect(shouldRejectTranscript('Vou ali e já volto', [{ no_speech_prob: 0.35, avg_logprob: -0.3 }])).toBe(false)
+  })
 })

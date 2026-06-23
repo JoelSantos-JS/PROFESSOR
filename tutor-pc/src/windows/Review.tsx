@@ -1,12 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Volume2, Check, X, Brain, Shuffle, Loader2 } from 'lucide-react'
+import { Volume2, Check, X, Brain, Shuffle, Loader2, Mic, Square } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { storeAPI, ttsAPI, tutorAPI, windowAPI, onChannel, settingsAPI } from '../services/electron'
+import DiffView from '../components/DiffView'
+import { storeAPI, ttsAPI, tutorAPI, windowAPI, onChannel, settingsAPI, sessionAPI } from '../services/electron'
 import { reviewCard, nextDue, type Grade } from '../lib/srs'
 import { playClip } from '../lib/playClip'
+import { usePractice, practiceMaxMs } from '../hooks/usePractice'
+import { diffWords, scoreFromDiff } from '../lib/text'
 import { languageFlag, languageNameFor } from '../lib/languages'
 import { uiText, appLanguage, type AppLanguage } from '../lib/uiLanguage'
-import type { VocabCard, SentenceVariation, LangStat } from '../types'
+import type { VocabCard, SentenceVariation, LangStat, DiffToken } from '../types'
 
 async function speak(text: string, lang: string) {
   try {
@@ -111,7 +114,10 @@ export default function Review() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col items-center justify-center p-7">
+      {/* overflow-y-auto + min-h-full: centraliza quando cabe e ROLA quando o conteúdo cresce
+          (revelar resposta + variações + notas) — antes os botões de nota saíam da janela. */}
+      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-full flex flex-col items-center justify-center p-7">
         {loading ? (
           <p className="text-sm text-muted">{t('loadingWord')}</p>
         ) : !card ? (
@@ -188,6 +194,9 @@ export default function Review() {
               )}
             </div>
 
+            {/* Speaking practice — fale a frase e receba score + diff */}
+            <SpeakPractice key={card.id} card={card} uiLang={uiLang} />
+
             {/* Actions */}
             {!revealed ? (
               <button
@@ -212,6 +221,71 @@ export default function Review() {
           </div>
         )}
       </div>
+      </div>
+    </div>
+  )
+}
+
+// Prática de fala do card: grava você falando a frase → transcreve → diff + score.
+// Alimenta também os "mistakes" (perfil de pronúncia) e a aba Sessão da barra flutuante.
+export function SpeakPractice({ card, uiLang }: { card: VocabCard; uiLang: AppLanguage }) {
+  const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
+  const { state, countdown, start, stop, cancel } = usePractice()
+  const [result, setResult] = useState<{ diff: DiffToken[]; score: number } | null>(null)
+
+  useEffect(() => () => cancel(), [cancel])
+
+  const recording    = state === 'recording'
+  const counting     = state === 'countdown'
+  const transcribing = state === 'transcribing'
+
+  const run = () => {
+    setResult(null)
+    start(practiceMaxMs(card.word), ({ text, audioUrl }) => {
+      const spoken = (text ?? '').trim()
+      if (!spoken) return
+      const diff = diffWords(card.word, spoken)
+      const score = scoreFromDiff(diff)
+      setResult({ diff, score })
+      const missed = diff.filter(d => d.status === 'missing').map(d => ({ word: d.word, lang: card.lang }))
+      if (missed.length) storeAPI.recordMistakes(missed).catch(() => undefined)
+      sessionAPI.addAttempt({ original: card.word, spoken, score, diff, audioUrl, lang: card.lang, at: Date.now() })
+    }, card.word)  // hint enviesa o Whisper para a frase esperada
+  }
+
+  if (!result) {
+    return (
+      <div className="mt-4 flex flex-col items-center gap-1.5">
+        <button
+          onClick={recording ? stop : run}
+          disabled={counting || transcribing}
+          aria-label={recording ? t('stop') : t('speak')}
+          className={[
+            'flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-colors disabled:opacity-50',
+            recording ? 'bg-danger text-white hover:bg-danger/90' : 'pill-button pill-ghost',
+          ].join(' ')}
+        >
+          {counting ? <>{countdown}…</>
+            : recording ? <><Square size={14} /> {t('stop')}</>
+            : transcribing ? <><Loader2 size={14} className="animate-spin" /> {t('transcribing')}</>
+            : <><Mic size={15} /> {t('speak')}</>}
+        </button>
+        <p className="text-[11px] text-muted text-center">{t('speakSentenceHint')}</p>
+      </div>
+    )
+  }
+
+  const scoreClass = result.score >= 80 ? 'score-good' : result.score >= 50 ? 'score-ok' : 'score-bad'
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-3">
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`score-badge ${scoreClass}`}>{result.score}%</span>
+        <span className="text-xs text-muted">{t('accuracy')}</span>
+        <button onClick={run} className="ml-auto pill-button pill-ghost px-3 py-1.5 text-xs">
+          <Mic size={13} /> {t('tryAgain')}
+        </button>
+      </div>
+      <DiffView diff={result.diff} />
     </div>
   )
 }

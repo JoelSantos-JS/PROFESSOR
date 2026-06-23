@@ -78,28 +78,18 @@ export class CredentialsService {
     return safeStorage.isEncryptionAvailable()
   }
 
-  set(providerId: ProviderId, apiKey: string): void {
-    if (!apiKey.trim()) {
-      this.remove(providerId)
-      return
-    }
-    let encrypted: string
+  private encrypt(apiKey: string): string {
     try {
-      encrypted = this.canEncrypt()
+      return this.canEncrypt()
         ? safeStorage.encryptString(apiKey).toString('base64')
         : Buffer.from(apiKey).toString('base64')
     } catch (err) {
       console.warn('[credentials] safeStorage failed, falling back to base64:', (err as Error).message)
-      encrypted = Buffer.from(apiKey).toString('base64')
+      return Buffer.from(apiKey).toString('base64')
     }
-    this.store[providerId] = encrypted
-    this.persist()
   }
 
-  get(providerId: ProviderId): string | null {
-    // Always reload from disk so changes from other instances are visible
-    const store = this.load()
-    const raw = store[providerId]
+  private decrypt(raw: string | undefined): string | null {
     if (!raw) return null
     try {
       return this.canEncrypt()
@@ -109,6 +99,26 @@ export class CredentialsService {
       return null
     }
   }
+
+  private setRaw(id: string, apiKey: string): void {
+    if (!apiKey.trim()) { delete this.store[id]; this.persist(); return }
+    this.store[id] = this.encrypt(apiKey)
+    this.persist()
+  }
+
+  set(providerId: ProviderId, apiKey: string): void {
+    this.setRaw(providerId, apiKey)
+  }
+
+  get(providerId: ProviderId): string | null {
+    // Always reload from disk so changes from other instances are visible
+    return this.decrypt(this.load()[providerId])
+  }
+
+  // ── Forvo (fonte de pronúncia por nativos; não é um provedor de IA) ──
+  setForvoKey(apiKey: string): void { this.setRaw('forvo', apiKey) }
+  getForvoKey(): string | null { return this.decrypt(this.load()['forvo']) }
+  hasForvoKey(): boolean { return !!this.load()['forvo'] }
 
   remove(providerId: ProviderId): void {
     delete this.store[providerId]

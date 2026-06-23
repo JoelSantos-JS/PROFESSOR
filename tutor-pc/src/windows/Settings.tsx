@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound, AlertTriangle, X } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { settingsAPI, credentialsAPI } from '../services/electron'
+import { settingsAPI, credentialsAPI, forvoAPI } from '../services/electron'
 import { validateApiKey, pickActiveProvider } from '../lib/apiKeyValidation'
 import { NATIVE_LANGUAGES } from '../lib/nativeLang'
 import { contentLanguageOptions, normalizeContentLanguage } from '../lib/contentLanguages'
-import { APP_LANGUAGES, appLanguage, uiText } from '../lib/uiLanguage'
+import { APP_LANGUAGES, appLanguage, uiText, type AppLanguage } from '../lib/uiLanguage'
+import UsageCostPanel from '../components/UsageCostPanel'
 import type { AppSettings, ProviderId, ProviderStatus, TtsProviderId } from '../types'
 
 interface TestState { testing?: boolean; ok?: boolean; msg?: string }
@@ -172,6 +173,7 @@ export default function Settings() {
     { key: 'Ctrl+Alt+D', desc: uiLang === 'en' ? 'Open Dashboard' : 'Abrir Dashboard' },
     { key: 'Ctrl+Alt+S', desc: uiLang === 'en' ? 'Open Settings' : 'Abrir Configuracoes' },
     { key: 'Ctrl+Alt+B', desc: uiLang === 'en' ? 'Open Tutor Board' : 'Abrir Tutor Board' },
+    { key: 'Ctrl+Alt+K', desc: uiLang === 'en' ? 'Show / hide dock' : 'Mostrar / esconder dock' },
     { key: 'Ctrl+Alt+Space', desc: uiLang === 'en' ? 'Pause / resume player' : 'Pausar / retomar player' },
   ]
   const ttsProviders = TTS_PROVIDERS.map(provider => ({
@@ -475,6 +477,15 @@ export default function Settings() {
           </p>
         </section>
 
+        {/* Pronúncia nativa (Forvo + Wikimedia) */}
+        <section>
+          <h2 className="label-eyebrow mb-3">{t('nativePronTitle')}</h2>
+          <div className="paper-card p-4">
+            <ForvoKeySection uiLang={uiLang} />
+          </div>
+          <p className="text-xs text-muted mt-2 px-1">{t('nativePronNote')}</p>
+        </section>
+
 
         {/* Shortcuts */}
         <section>
@@ -496,6 +507,14 @@ export default function Settings() {
                 </kbd>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Uso & Custo (estimativa BYOK) */}
+        <section>
+          <h2 className="label-eyebrow mb-3">{t('usageCostTitle')}</h2>
+          <div className="paper-card p-4">
+            <UsageCostPanel uiLang={uiLang} />
           </div>
         </section>
 
@@ -579,6 +598,50 @@ function TtsSelect({
           <option key={option.id} value={option.id}>{option.name}</option>
         ))}
       </select>
+    </div>
+  )
+}
+
+// Campo da chave Forvo (opcional). Wikimedia já cobre o caso grátis; isto melhora a cobertura.
+function ForvoKeySection({ uiLang }: { uiLang: AppLanguage }) {
+  const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
+  const [configured, setConfigured] = useState(false)
+  const [value, setValue] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => { forvoAPI.hasKey().then(setConfigured).catch(() => {}) }, [])
+
+  const save = async () => {
+    await forvoAPI.setKey(value.trim()).catch(() => {})
+    setConfigured(!!value.trim())
+    setValue('')
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="password"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        placeholder={configured ? '••••••••  ' + t('configured') : 'Forvo API key'}
+        className="flex-1 bg-surface-2 border border-border text-foreground text-sm rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors"
+      />
+      <button
+        onClick={save}
+        disabled={!value.trim()}
+        className="pill-button pill-primary px-3 py-2 text-xs disabled:opacity-40"
+      >
+        {saved ? <><Check size={13} /> {t('saved')}</> : t('add')}
+      </button>
+      <a
+        href="https://api.forvo.com/" target="_blank" rel="noreferrer"
+        className="text-xs text-primary/80 hover:text-primary flex items-center gap-0.5 whitespace-nowrap"
+        title={t('getKey')}
+      >
+        <ExternalLink size={12} /> {t('getKey')}
+      </a>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import fs from 'fs'
 import { advanceStreak } from '../lib/streak.js'
 import { languageStats, type LangStat } from '../lib/languageStats.js'
 import { canonicalLang } from '../lib/langNormalize.js'
+import { applyMistake } from '../lib/mistakeTracking.js'
 
 // ── Persisted shapes ──────────────────────────────────────────────────────────
 
@@ -38,18 +39,31 @@ export interface MistakeRecord {
   lang: string
   count: number
   lastAt: number
+  sessionCount?: number      // erros desta palavra na sessão atual (contígua no tempo)
+  struggleSessions?: number  // sessões com dificuldade CONSTANTE (≥2 erros) — sinal do perfil
 }
 
 export type WordStatus = 'known' | 'learning' | 'ignore'
 
+export type TokenUsageFeature = 'professor' | 'analysis' | 'lookup' | 'transcription' | 'variations' | 'decompose' | 'other'
+
 export interface TokenUsageRecord {
   id: string
   at: number
-  feature: 'professor' | 'analysis' | 'lookup' | 'other'
+  feature: TokenUsageFeature
   lang?: string
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  provider?: string        // qual provedor de IA — p/ estimar custo em US$
+  model?: string           // qual modelo — p/ estimar custo em US$
+  audioSeconds?: number    // p/ transcrição (Whisper cobra por minuto de áudio)
+}
+
+/** Eventos crus de uso + sessões — o renderer agrega em custo/tempo (summarizeUsage). */
+export interface UsageEvents {
+  events: TokenUsageRecord[]
+  sessions: Array<{ startedAt: number; endedAt?: number }>
 }
 
 export interface TokenUsageSummary {
@@ -187,11 +201,23 @@ export class StoreService {
       inputTokens,
       outputTokens,
       totalTokens,
+      provider: usage.provider || undefined,
+      model: usage.model || undefined,
+      audioSeconds: usage.audioSeconds && usage.audioSeconds > 0 ? Math.round(usage.audioSeconds) : undefined,
     }
     data.tokenUsage.push(record)
     data.tokenUsage = data.tokenUsage.slice(-5000)
     this.save(data)
     return record
+  }
+
+  /** Uso cru (até N registros) + sessões — para o painel "Uso & Custo" agregar custo/tempo. */
+  getUsageEvents(limit = 5000): UsageEvents {
+    const data = this.load()
+    return {
+      events: data.tokenUsage.slice(-limit),
+      sessions: data.sessions.map(s => ({ startedAt: s.startedAt, endedAt: s.endedAt })),
+    }
   }
 
   getTokenUsageSummary(now = Date.now(), feature?: TokenUsageRecord['feature']): TokenUsageSummary {
@@ -274,18 +300,21 @@ export class StoreService {
     for (const { word, lang } of words) {
       const key = `${lang}:${word.toLowerCase()}`
       const ex = data.mistakes[key]
-      if (ex) { ex.count += 1; ex.lastAt = now }
-      else data.mistakes[key] = { word, lang, count: 1, lastAt: now }
+      const next = applyMistake(ex && {
+        count: ex.count, lastAt: ex.lastAt,
+        sessionCount: ex.sessionCount ?? 1, struggleSessions: ex.struggleSessions ?? 0,
+      } || undefined, now)
+      data.mistakes[key] = { word: ex?.word ?? word, lang: ex?.lang ?? lang, ...next }
     }
     this.save(data)
   }
 
-  /** Todos os erros (mistakes) de um idioma, ordenados por frequência — para o perfil de pronúncia. */
+  /** Erros de um idioma p/ o perfil — dificuldade CONSTANTE por sessão primeiro, frequência como desempate. */
   getMistakes(lang: string): MistakeRecord[] {
     const canon = canonicalLang(lang)
     return Object.values(this.load().mistakes)
       .filter(m => m.lang === canon)
-      .sort((a, b) => b.count - a.count)
+      .sort((a, b) => ((b.struggleSessions ?? 0) - (a.struggleSessions ?? 0)) || (b.count - a.count))
   }
 
   // ── Aggregates for the dashboard ───────────────────────────────────────────────

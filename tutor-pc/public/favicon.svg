@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <title>Soaken</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F8A8A"/>
+      <stop offset="1" stop-color="#16706F"/>
+    </linearGradient>
+    <radialGradient id="topglow" cx="0.5" cy="0" r="0.85">
+      <stop offset="0" stop-color="#2FA6A4" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#2FA6A4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E8F5F2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- squircle background -->
+  <rect x="0" y="0" width="512" height="512" rx="114" ry="114" fill="url(#bg)"/>
+  <rect x="0" y="0" width="512" height="512" rx="114" ry="114" fill="url(#topglow)"/>
+
+  <!-- faint water ripples near the base -->
+  <path d="M40 392 Q150 362 256 392 T472 392 V472 H40 Z" fill="#FFFFFF" opacity="0.06"/>
+  <path d="M40 420 Q150 392 256 420 T472 420 V472 H40 Z" fill="#FFFFFF" opacity="0.05"/>
+
+  <!-- water drop -->
+  <path d="M256 116 C 300 196 376 240 376 312 A 120 120 0 0 1 136 312 C 136 240 212 196 256 116 Z"
+        fill="url(#drop)"/>
+
+  <!-- "S" serifado — glifa real de fonte serif (renderizada na geração dos PNGs) -->
+  <text x="257" y="384" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+        font-size="210" font-weight="600" fill="#16706F">S</text>
+</svg>

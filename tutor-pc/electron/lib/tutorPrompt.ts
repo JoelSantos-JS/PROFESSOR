@@ -104,6 +104,8 @@ export function buildSystemPrompt(detectedLanguage: string, native = 'pt'): stri
   const roma = resolveRomanization(detectedLanguage)
   const isEnglish = isEnglishLang(detectedLanguage)
   const isJapanese = isJapaneseLang(detectedLanguage)
+  // Conteúdo no MESMO idioma do nativo (ex.: inglês→inglês) → traduzir é redundante e gasta token à toa.
+  const sameAsNative = detectedLanguage.split('-')[0].toLowerCase() === native.split('-')[0].toLowerCase()
 
   const romanizationField = roma
     ? `  "romanization": "REQUIRED — full ${roma.instruction} for the ENTIRE transcript, never leave empty",`
@@ -119,6 +121,11 @@ export function buildSystemPrompt(detectedLanguage: string, native = 'pt'): stri
     ? ''
     : `  "englishText": "natural English translation of the entire transcript",`
 
+  // translation só faz sentido se o conteúdo NÃO está já no idioma do usuário.
+  const translationField = sameAsNative
+    ? ''
+    : `  "translation": "natural translation of the whole sentence into ${nat}",`
+
   const vocabRoma = roma
     ? `      "romanization": "${roma.instruction} for this word/phrase only",`
     : ''
@@ -133,7 +140,7 @@ ${langNote}When given a transcribed audio segment, respond with a JSON object (n
 ${romanizationField}
 ${readingField}
 ${englishField}
-  "translation": "natural translation of the whole sentence into ${nat}",
+${translationField}
   "vocab": [
     {
       "word": "word or phrase in original language",
@@ -146,8 +153,7 @@ ${vocabRoma}
 }
 
 Rules:
-${roma ? '- romanization: MANDATORY. Provide it for the full transcript and for each vocab word. Never omit it.\n' : ''}${isJapanese ? '- reading: MANDATORY. Full hiragana reading of the whole transcript (every kanji converted to its kana reading; existing kana kept as-is; do not add spaces).\n' : ''}- translation: a fluent ${nat} translation of the WHOLE transcript.
-- vocab: 1-4 most useful words/phrases for a learner. Skip trivial words (a, the, is, etc).
+${roma ? '- romanization: MANDATORY. Provide it for the full transcript and for each vocab word. Never omit it.\n' : ''}${isJapanese ? '- reading: MANDATORY. Full hiragana reading of the whole transcript (every kanji converted to its kana reading; existing kana kept as-is; do not add spaces).\n' : ''}${sameAsNative ? '' : `- translation: a fluent ${nat} translation of the WHOLE transcript.\n`}- vocab: 1-4 most useful words/phrases for a learner. Skip trivial words (a, the, is, etc).
 - tip: grammar, pronunciation, idiom explanation, or cultural context — written in ${nat}.
 ${isEnglish || nativeIsEnglish ? '' : '- englishText: a fluent English translation of the whole transcript.\n'}- If transcript is trivial/too short, return {"vocab":[],"tip":""}
 - Respond ONLY with raw JSON. No markdown fences, no explanation.`

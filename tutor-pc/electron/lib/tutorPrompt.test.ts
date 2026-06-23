@@ -2,12 +2,22 @@ import { describe, it, expect } from 'vitest'
 import { buildSystemPrompt, buildLookupPrompt, buildDecomposePrompt, isEnglishLang, isJapaneseLang, resolveRomanization, ROMANIZATION_SYSTEM, buildVariationsPrompt } from './tutorPrompt'
 
 describe('buildSystemPrompt — sentence translation field', () => {
-  it('always requests a translation of the whole sentence', () => {
-    expect(buildSystemPrompt('en')).toContain('"translation"')
+  it('pede tradução quando o conteúdo é de OUTRO idioma que o nativo', () => {
+    expect(buildSystemPrompt('en')).toContain('"translation"')   // en content, nativo pt
     expect(buildSystemPrompt('ko')).toContain('"translation"')
   })
   it('default native: Brazilian Portuguese translation of the whole transcript', () => {
     expect(buildSystemPrompt('en').toLowerCase()).toContain('brazilian portuguese translation of the whole transcript')
+  })
+  it('OMITE a tradução da FRASE quando conteúdo == idioma do nativo (não gasta token à toa)', () => {
+    // inglês → inglês: sem tradução da frase nem englishText (o "translation" do vocab continua)
+    const enEn = buildSystemPrompt('en', 'en')
+    expect(enEn).not.toContain('natural translation of the whole sentence')
+    expect(enEn).not.toContain('translation of the WHOLE transcript')
+    expect(enEn).not.toContain('"englishText"')
+    // português → português (e aceita region code)
+    expect(buildSystemPrompt('pt-BR', 'pt')).not.toContain('natural translation of the whole sentence')
+    expect(buildSystemPrompt('pt', 'pt-BR')).not.toContain('natural translation of the whole sentence')
   })
 })
 

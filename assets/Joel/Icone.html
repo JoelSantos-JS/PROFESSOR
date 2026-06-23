@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Soaken — Ícone do app</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#EDF3F2;--surface:#F7FBFA;--surface-2:#E8F1F0;--raised:#fff;--border:#D5E3E1;
+    --ink:#1F3330;--ink-2:#46615C;--muted:#7A938E;--brand:#1F8A8A;--brand-ink:#16706F;--brand-soft:#D4EAE8;--support:#C2683F;
+    --font-ui:"Hanken Grotesk",system-ui,sans-serif;--font-display:"Newsreader",Georgia,serif;--font-mono:"IBM Plex Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font-ui);color:var(--ink);background:var(--bg);
+    background-image:radial-gradient(rgba(31,51,48,.035) 1px,transparent 1px);background-size:5px 5px;
+    -webkit-font-smoothing:antialiased;padding:56px 40px 90px;}
+  .wrap{max-width:1040px;margin:0 auto;}
+  header{display:flex;align-items:center;gap:20px;margin-bottom:10px;}
+  h1{font-family:var(--font-display);font-weight:600;font-size:36px;letter-spacing:-.02em;line-height:1;}
+  .tag{color:var(--muted);font-size:15px;margin-top:6px;}
+  .intro{color:var(--ink-2);font-size:15.5px;line-height:1.6;max-width:640px;margin:24px 0 44px;}
+  .intro b{color:var(--brand-ink);}
+  h2{font-family:var(--font-display);font-weight:600;font-size:22px;margin:46px 0 18px;}
+
+  /* hero */
+  .hero{display:flex;align-items:center;gap:40px;background:var(--raised);border:1px solid var(--border);border-radius:24px;padding:40px;box-shadow:0 1px 2px rgba(31,51,48,.05);flex-wrap:wrap;}
+  .hero img{width:200px;height:200px;filter:drop-shadow(0 18px 36px rgba(22,112,111,.28));}
+  .hero .meta h3{font-family:var(--font-display);font-weight:600;font-size:26px;}
+  .hero .meta p{color:var(--ink-2);font-size:14.5px;line-height:1.6;margin-top:8px;max-width:380px;}
+  .specs{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
+  .spec{font-size:12.5px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-weight:600;color:var(--ink-2);}
+  .spec b{color:var(--brand-ink);font-family:var(--font-mono);font-weight:500;}
+
+  /* sizes */
+  .sizes{display:flex;align-items:flex-end;gap:26px;background:var(--raised);border:1px solid var(--border);border-radius:20px;padding:32px 34px;flex-wrap:wrap;}
+  .sizes .s{text-align:center;}
+  .sizes img{display:block;}
+  .sizes .cap{font-size:11.5px;color:var(--muted);margin-top:10px;font-family:var(--font-mono);}
+
+  /* contexts */
+  .ctxgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .ctxcard{border:1px solid var(--border);border-radius:18px;overflow:hidden;background:var(--raised);}
+  .ctxcard .h{padding:9px 16px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);border-bottom:1px solid var(--border);}
+  .ctxcard .b{padding:26px;display:flex;align-items:center;justify-content:center;min-height:150px;}
+  /* dark dock */
+  .dock{display:inline-flex;gap:8px;padding:9px;border-radius:20px;background:rgba(22,48,44,.92);box-shadow:0 14px 34px rgba(20,30,24,.34);backdrop-filter:blur(10px);}
+  .dock .d{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:rgba(255,255,255,.6);}
+  .dock .d.on{background:rgba(255,255,255,.14);}
+  .dock img{width:40px;height:40px;border-radius:11px;}
+  /* mac dock */
+  .macbar{display:inline-flex;align-items:flex-end;gap:12px;padding:10px 18px;border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.7);backdrop-filter:blur(10px);box-shadow:0 16px 34px rgba(31,51,48,.2);}
+  .macbar .app{width:14px;height:14px;border-radius:5px;}
+  .macbar img{width:60px;height:60px;}
+  /* browser tab */
+  .tab{display:inline-flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-bottom:none;border-radius:11px 11px 0 0;padding:10px 16px 12px;box-shadow:0 -2px 8px rgba(31,51,48,.04);}
+  .tab img{width:18px;height:18px;}
+  .tab span{font-size:13.5px;font-weight:600;}
+  /* login window mini */
+  .winmini{width:230px;border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 12px 30px rgba(31,51,48,.14);}
+  .winmini .tb{height:30px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 10px;}
+  .winmini .tb img{width:15px;height:15px;border-radius:4px;}
+  .winmini .tb b{font-size:11px;}
+  .winmini .bd{padding:22px 18px;text-align:center;background:var(--surface);}
+  .winmini .bd img{width:52px;height:52px;filter:drop-shadow(0 6px 14px rgba(22,112,111,.3));}
+  .winmini .bd .t{font-family:var(--font-display);font-size:16px;font-weight:600;margin-top:10px;}
+
+  .files{font-family:var(--font-mono);font-size:13px;color:var(--ink-2);background:var(--raised);border:1px solid var(--border);border-radius:14px;padding:18px 22px;line-height:1.9;}
+  .files b{color:var(--brand-ink);}
+  .rationale{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+  .rcard{background:var(--raised);border:1px solid var(--border);border-radius:16px;padding:20px;}
+  .rcard .e{font-size:24px;}
+  .rcard h4{font-size:15px;margin:10px 0 6px;}
+  .rcard p{font-size:13px;color:var(--muted);line-height:1.5;}
+  .footer{margin-top:60px;color:var(--muted);font-size:12.5px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="icon/soaken-128.png" width="68" height="68" alt="Soaken" style="filter:drop-shadow(0 8px 18px rgba(22,112,111,.3))" />
+    <div>
+      <h1>Soaken — Ícone do app</h1>
+      <div class="tag">Gota + “S” serifado · metáfora de <b style="color:var(--brand-ink)">imersão</b> no idioma</div>
+    </div>
+  </header>
+  <p class="intro">
+    O nome <b>Soaken</b> vem de <i>soak in</i> — absorver, mergulhar. O ícone traduz isso: uma <b>gota d’água</b> guardando um
+    <b>“S” serifado</b> (a mesma Newsreader dos títulos do app), pousada sobre ondulações suaves. Fundo no teal <b>Deep Soak</b>.
+  </p>
+
+  <div class="hero">
+    <img src="icon/soaken-512.png" alt="Ícone Soaken 512px" />
+    <div class="meta">
+      <h3>Deep Soak</h3>
+      <p>Squircle no estilo de apps desktop modernos, com luz superior e sombra interna sutil. A gota usa branco levemente esverdeado para não “estourar”; o S em teal profundo garante contraste e leitura.</p>
+      <div class="specs">
+        <span class="spec">Fundo <b>#1F8A8A→#16706F</b></span>
+        <span class="spec">Letra <b>#16706F</b></span>
+        <span class="spec">Raio <b>22,3%</b></span>
+        <span class="spec">Grid <b>512px</b></span>
+      </div>
+    </div>
+  </div>
+
+  <h2>Escala — de favicon a loja de apps</h2>
+  <div class="sizes">
+    <div class="s"><img src="icon/soaken-512.png" width="120" height="120"><div class="cap">512</div></div>
+    <div class="s"><img src="icon/soaken-128.png" width="80" height="80"><div class="cap">128</div></div>
+    <div class="s"><img src="icon/soaken-64.png" width="64" height="64"><div class="cap">64</div></div>
+    <div class="s"><img src="icon/soaken-48.png" width="48" height="48"><div class="cap">48</div></div>
+    <div class="s"><img src="icon/soaken-32.png" width="32" height="32"><div class="cap">32</div></div>
+    <div class="s"><img src="icon/soaken-16.png" width="16" height="16"><div class="cap">16</div></div>
+  </div>
+
+  <h2>Em contexto</h2>
+  <div class="ctxgrid">
+    <div class="ctxcard"><div class="h">Dock do app (escuro)</div><div class="b" style="background:linear-gradient(160deg,#1c2733,#243a3a)">
+      <div class="dock"><img src="icon/soaken-128.png"><div class="d">▦</div><div class="d">◷</div></div>
+    </div></div>
+    <div class="ctxcard"><div class="h">Dock do macOS</div><div class="b">
+      <div class="macbar"><span class="app" style="background:#3E7BB6"></span><span class="app" style="background:#C98A2B"></span><img src="icon/soaken-128.png"><span class="app" style="background:#8B6FD4"></span></div>
+    </div></div>
+    <div class="ctxcard"><div class="h">Aba do navegador</div><div class="b" style="background:var(--surface-2)">
+      <div class="tab"><img src="icon/soaken-32.png"><span>Soaken — Entrar</span></div>
+    </div></div>
+    <div class="ctxcard"><div class="h">Janela de login</div><div class="b" style="background:var(--bg)">
+      <div class="winmini"><div class="tb"><img src="icon/soaken-32.png"><b>Entrar · Soaken</b></div><div class="bd"><img src="icon/soaken-128.png"><div class="t">Bem-vindo de volta</div></div></div>
+    </div></div>
+  </div>
+
+  <h2>Por que funciona</h2>
+  <div class="rationale">
+    <div class="rcard"><div class="e">💧</div><h4>Conta o nome</h4><p>Gota = “soak”. A imagem explica o produto sem precisar de texto.</p></div>
+    <div class="rcard"><div class="e">🔤</div><h4>É a marca</h4><p>O “S” usa a Newsreader dos títulos — o ícone e a tipografia do app falam a mesma língua.</p></div>
+    <div class="rcard"><div class="e">🔎</div><h4>Escala bem</h4><p>Silhueta simples e contraste alto: continua legível a 16px no favicon.</p></div>
+  </div>
+
+  <h2>Arquivos entregues</h2>
+  <div class="files">
+    <b>favicon.svg</b> — vetor mestre (escalável, já ligado a todas as páginas)<br>
+    <b>icon/soaken-512.png</b> · 256 · 192 · 180 · 128 · 64 · 48 · 32 · 16 — PNGs com transparência<br>
+    <span style="color:var(--muted)">512 = lojas/Electron · 192 = PWA · 180 = Apple touch · 32/16 = favicon</span>
+  </div>
+
+  <div class="footer">Soaken · Deep Soak — ícone vetor + raster, prontos para uso</div>
+</div>
+</body>
+</html>

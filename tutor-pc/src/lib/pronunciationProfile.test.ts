@@ -19,6 +19,34 @@ describe('top (universal)', () => {
   })
 })
 
+describe('dificuldade por sessão (struggleSessions)', () => {
+  const ms = (word: string, count: number, struggleSessions: number): MistakeWord => ({ word, count, struggleSessions })
+
+  it('quando há dificuldade constante, o perfil usa ELA (não a frequência crua)', () => {
+    // "the" tem count alto (ruído do ASR) mas nunca foi dificuldade; "senses" foi struggle em 2 sessões
+    const p = pronunciationProfile('en', [ms('the', 20, 0), ms('senses', 4, 2), ms('a', 15, 0)], 5)
+    expect(p.top.map(t => t.word)).toEqual(['senses'])  // só o que foi dificuldade real
+  })
+
+  it('ordena por nº de sessões de dificuldade, frequência como desempate', () => {
+    const p = pronunciationProfile('en', [ms('man', 5, 1), ms('whose', 3, 3), ms('senses', 9, 1)], 5)
+    expect(p.top.map(t => t.word)).toEqual(['whose', 'senses', 'man'])
+  })
+
+  it('grupos de som só contam palavras que foram dificuldade real', () => {
+    // "river" (tem r) com struggle 2; "the" (tem th) só ruído → th não aparece
+    const p = pronunciationProfile('en', [ms('river', 4, 2), ms('the', 30, 0)])
+    expect(p.groups.map(g => g.key)).toContain('r')
+    expect(p.groups.map(g => g.key)).not.toContain('th')
+    expect(p.groups.find(g => g.key === 'r')?.count).toBe(2)  // pesa pela dificuldade, não pela frequência
+  })
+
+  it('sem nenhuma dificuldade constante ainda → cai na frequência (não fica vazio)', () => {
+    const p = pronunciationProfile('en', [mw('man', 3), mw('cat', 1)], 5)
+    expect(p.top.map(t => t.word)).toEqual(['man', 'cat'])
+  })
+})
+
 describe('coreano — batchim (som representativo)', () => {
   it('한국어 entra nos baldes ㄴ e ㄱ', () => {
     const p = pronunciationProfile('ko', [mw('한국어', 2)])

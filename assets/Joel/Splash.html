@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Soaken — Abrindo</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#EDF3F2;--ink:#1F3330;--ink-2:#46615C;--muted:#7A938E;
+    --brand:#1F8A8A;--brand-ink:#16706F;--brand-soft:#D4EAE8;
+    --font-ui:"Hanken Grotesk",system-ui,sans-serif;--font-display:"Newsreader",Georgia,serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--font-ui);background:#0e2422;display:grid;place-items:center;overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* The splash is a fixed desktop-app window (frameless, rounded) */
+  .splash{
+    position:relative;width:320px;height:400px;border-radius:22px;overflow:hidden;
+    background:
+      radial-gradient(130% 80% at 50% -10%, #2A9D9B 0%, transparent 55%),
+      linear-gradient(180deg,#1F8A8A 0%, #16706F 52%, #0F5957 100%);
+    box-shadow:0 40px 100px rgba(8,30,28,.6), inset 0 0 0 1px rgba(255,255,255,.10);
+    color:#EAF4F2;
+    display:flex;flex-direction:column;align-items:center;
+  }
+  /* faint grain */
+  .splash::before{
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+    background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1px);background-size:5px 5px;
+  }
+
+  /* animated water layers at the bottom */
+  .water{position:absolute;left:0;right:0;bottom:0;height:150px;overflow:hidden;}
+  .wave{
+    position:absolute;left:-50%;width:200%;height:150px;bottom:0;
+    background:radial-gradient(120% 100% at 50% 100%, rgba(255,255,255,.10), transparent 70%);
+  }
+  .wave svg{position:absolute;bottom:0;width:100%;height:100%;}
+  .w1{animation:drift 9s ease-in-out infinite;}
+  .w2{animation:drift 13s ease-in-out infinite reverse;opacity:.6;}
+  @keyframes drift{0%,100%{transform:translateX(-4%);}50%{transform:translateX(4%);}}
+
+  /* concentric ripple rings emanating from the icon */
+  .rings{position:absolute;top:128px;left:50%;transform:translateX(-50%);width:0;height:0;}
+  .rings i{
+    position:absolute;left:50%;top:50%;border:1.5px solid rgba(255,255,255,.5);border-radius:50%;
+    transform:translate(-50%,-50%);animation:ripple 3.2s ease-out infinite;opacity:0;
+  }
+  .rings i:nth-child(2){animation-delay:1.06s;}
+  .rings i:nth-child(3){animation-delay:2.13s;}
+  @keyframes ripple{
+    0%{width:88px;height:88px;opacity:.55;}
+    80%{opacity:0;}
+    100%{width:240px;height:240px;opacity:0;}
+  }
+
+  /* brand block */
+  .brand{margin-top:86px;display:flex;flex-direction:column;align-items:center;z-index:2;}
+  .iconwrap{animation:bob 4s ease-in-out infinite;filter:drop-shadow(0 16px 30px rgba(6,32,30,.5));}
+  .iconwrap img{width:88px;height:88px;display:block;}
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-9px);}}
+
+  .name{font-family:var(--font-display);font-weight:600;font-size:32px;letter-spacing:.01em;margin-top:18px;line-height:1.1;padding:0 6px;white-space:nowrap;
+    background:linear-gradient(180deg,#ffffff,#CFEAE7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .tagline{font-size:12.5px;color:rgba(234,244,242,.72);margin-top:3px;letter-spacing:.02em;white-space:nowrap;}
+
+  /* loading */
+  .loading{position:absolute;bottom:42px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:11px;z-index:2;}
+  .bar{width:150px;height:4px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden;}
+  .bar i{display:block;height:100%;width:40%;border-radius:999px;
+    background:linear-gradient(90deg,rgba(255,255,255,.4),#ffffff);
+    animation:load 2.4s cubic-bezier(.5,0,.2,1) infinite;}
+  @keyframes load{0%{transform:translateX(-120%);}60%{transform:translateX(280%);}100%{transform:translateX(280%);}}
+  .status{font-size:11.5px;color:rgba(234,244,242,.6);font-weight:500;min-height:15px;letter-spacing:.02em;}
+  .ver{position:absolute;bottom:15px;font-size:10px;color:rgba(234,244,242,.4);letter-spacing:.06em;}
+
+  /* honors reduced motion */
+  @media (prefers-reduced-motion: reduce){
+    .iconwrap,.w1,.w2,.rings i,.bar i{animation:none;}
+    .bar i{width:70%;}
+  }
+</style>
+</head>
+<body>
+  <div class="splash">
+    <div class="rings"><i></i><i></i><i></i></div>
+
+    <div class="brand">
+      <div class="iconwrap"><img src="icon/soaken-512.png" alt="Soaken" /></div>
+      <div class="name">Soaken</div>
+      <div class="tagline">Mergulhe no idioma</div>
+    </div>
+
+    <div class="loading">
+      <div class="bar"><i></i></div>
+      <div class="status" id="status">Iniciando…</div>
+    </div>
+    <div class="ver">v2.0 · Deep Soak</div>
+
+    <div class="water">
+      <div class="wave w1"><svg viewBox="0 0 320 150" preserveAspectRatio="none"><path d="M0 55 Q80 30 160 55 T320 55 V150 H0 Z" fill="rgba(255,255,255,.06)"/></svg></div>
+      <div class="wave w2"><svg viewBox="0 0 320 150" preserveAspectRatio="none"><path d="M0 75 Q80 50 160 75 T320 75 V150 H0 Z" fill="rgba(255,255,255,.05)"/></svg></div>
+    </div>
+  </div>
+
+  <script>
+    // cycle through realistic startup statuses
+    const steps = ["Iniciando…","Carregando seus idiomas…","Preparando o tutor…","Sincronizando revisões…","Quase lá…"];
+    const el = document.getElementById('status');
+    let i = 0;
+    setInterval(()=>{ i=(i+1)%steps.length; el.style.opacity=0;
+      setTimeout(()=>{ el.textContent=steps[i]; el.style.opacity=1; },200);
+    }, 1400);
+    el.style.transition='opacity .2s';
+  </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ files:
   - package.json
 
 win:
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch: x64
@@ -22,6 +23,9 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  shortcutName: Soaken
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
 
 asar: true
 compression: maximum

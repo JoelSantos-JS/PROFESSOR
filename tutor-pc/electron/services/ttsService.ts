@@ -89,6 +89,20 @@ export async function synthesize(text: string, lang: string): Promise<SynthesisR
   })
 }
 
+/**
+ * Sintetiza com uma VOZ específica (variante de sotaque) via Edge TTS. Cacheado por voz,
+ * então cada sotaque é gerado uma vez. Usado pelas "variantes de pronúncia" no lookup da palavra.
+ */
+export async function synthesizeVoice(text: string, voice: string, lang = ''): Promise<SynthesisResult> {
+  return synthesizeCached({
+    provider: 'edge',
+    lang: lang || voice,
+    voice,
+    text,
+    create: () => synthesizeEdge(text, voice),
+  })
+}
+
 export function warmupLocalTts(): void {
   const settings = new SettingsService().getAll()
   if ((settings.activeTtsProvider ?? 'kokoro') !== 'kokoro') return

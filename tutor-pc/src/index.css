@@ -1,21 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #C2683F;
+  /* Tema Deep Soak (Soaken) — teal/aquático */
+  --color-primary: #1F8A8A;
   --color-danger: #C5564F;
   --color-warning: #C98A2B;
   --color-success: #4F9D6B;
-  --color-background: #F3EAE0;
-  --color-surface: #FCF7F1;
-  --color-surface-2: #F1E6DA;
-  --color-border: #E5D8C9;
-  --color-foreground: #3A2E26;
-  --color-muted: #9C8A78;
+  --color-background: #EDF3F2;
+  --color-surface: #F7FBFA;
+  --color-surface-2: #E8F1F0;
+  --color-border: #D5E3E1;
+  --color-foreground: #1F3330;
+  --color-muted: #7A938E;
 }
 
 :root {
   --font-ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-display: "Newsreader", Georgia, serif;
+  --font-display: "Fraunces", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
 
   --r-sm: 8px;
@@ -24,21 +25,21 @@
   --r-xl: 22px;
   --r-full: 999px;
 
-  --bg: #F3EAE0;
-  --bg-grain: #ECE0D2;
-  --surface: #FCF7F1;
-  --surface-2: #F1E6DA;
+  --bg: #EDF3F2;
+  --bg-grain: #E3ECEB;
+  --surface: #F7FBFA;
+  --surface-2: #E8F1F0;
   --raised: #FFFFFF;
-  --border: #E5D8C9;
-  --border-strong: #D5C3AE;
-  --ink: #3A2E26;
-  --ink-2: #6E5A4B;
-  --muted: #9C8A78;
-  --brand: #C2683F;
-  --brand-ink: #A6532E;
-  --brand-soft: #F3E0D4;
-  --support: #5B7E63;
-  --support-soft: #E5ECE0;
+  --border: #D5E3E1;
+  --border-strong: #BCD0CD;
+  --ink: #1F3330;
+  --ink-2: #46615C;
+  --muted: #7A938E;
+  --brand: #1F8A8A;
+  --brand-ink: #16706F;
+  --brand-soft: #D4EAE8;
+  --support: #C2683F;
+  --support-soft: #F3E0D4;
 
   --orig: #3E7BB6;
   --orig-soft: #E4EEF7;
@@ -122,8 +123,8 @@ button {
 
 .app-paper {
   background:
-    radial-gradient(120% 90% at 75% 10%, rgba(255, 220, 172, .34), transparent 55%),
-    radial-gradient(120% 100% at 5% 100%, rgba(91, 126, 99, .16), transparent 58%),
+    radial-gradient(120% 90% at 75% 10%, rgba(150, 222, 214, .34), transparent 55%),
+    radial-gradient(120% 100% at 5% 100%, rgba(31, 138, 138, .12), transparent 58%),
     var(--bg);
   color: var(--ink);
 }

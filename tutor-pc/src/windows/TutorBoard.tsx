@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BookOpen, Lightbulb, Mic, Volume2, RefreshCw, XCircle, Repeat, GraduationCap, Gauge } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
 import DiffView from '../components/DiffView'
+import PronunciationVariants from '../components/PronunciationVariants'
 import { audioAPI, onChannel, ttsAPI, listeningAPI, sessionAPI, tutorAPI, storeAPI, settingsAPI } from '../services/electron'
 import { diffWords, scoreFromDiff, segmentText, wordMatches } from '../lib/text'
 import { playbackProgress, tokenAtProgress, findWordCue } from '../lib/tts'
@@ -116,6 +117,7 @@ export default function TutorBoard() {
   const [chatMounted, setChatMounted] = useState(false)
   const [speed, setSpeed] = useState(1)   // velocidade do listening (Original/TTS)
   const [uiLang, setUiLang] = useState<AppLanguage>('pt')
+  const [nativeLang, setNativeLang] = useState('pt')   // idioma materno (legenda extra)
   const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -123,6 +125,7 @@ export default function TutorBoard() {
     settingsAPI.getAll().then(s => {
       setSpeed(normalizeSpeed(s.playbackSpeed))
       setUiLang(appLanguage(s.appLanguage))
+      setNativeLang(baseLang(s.nativeLanguage || 'pt'))
     }).catch(() => {})
   }, [])
   const cycleSpeed = () => {
@@ -214,7 +217,7 @@ export default function TutorBoard() {
               {entries.some(e => isChineseContent(e.contentLanguage)) && <ToneLegend />}
             </div>
             {entries.map((entry, i) => (
-              <EntryCard key={entry.id} entry={entry} index={i + 1} speed={speed} />
+              <EntryCard key={entry.id} entry={entry} index={i + 1} speed={speed} nativeLang={nativeLang} />
             ))}
             <div ref={bottomRef} />
           </div>
@@ -275,7 +278,7 @@ function KnownStat({ entries }: { entries: Entry[] }) {
 // Practice state per card
 type PracticeState = 'idle' | 'countdown' | 'recording' | 'transcribing' | 'result'
 
-function EntryCard({ entry, index, speed = 1 }: { entry: TutorAnalysis; index: number; speed?: number }) {
+export function EntryCard({ entry, index, speed = 1, nativeLang = 'pt' }: { entry: TutorAnalysis; index: number; speed?: number; nativeLang?: string }) {
   const t = useT()
   const [practice, setPractice] = useState<PracticeState>('idle')
   const [countdown, setCountdown] = useState(3)
@@ -320,14 +323,21 @@ function EntryCard({ entry, index, speed = 1 }: { entry: TutorAnalysis; index: n
   }, [loop])
   const resetSync = useCallback(() => { lastWordRef.current = -1; setPlayMode('idle'); setProgress(-1) }, [])
 
-  // Word dictionary lookup
+  // Word dictionary lookup (+ cache por palavra nesta frase, p/ não re-consultar a IA ao reclicar)
   const [lookup, setLookup] = useState<{ word: string; wordIndex: number; approxStart: number; approxEnd: number; loading: boolean; data?: WordLookup } | null>(null)
+  const lookupCacheRef = useRef<Record<string, WordLookup>>({})
 
   const handleWordClick = useCallback(async (word: string, wordIndex: number, approxStart: number, approxEnd: number) => {
     const clean = word.trim()
     if (!clean) return
+    const cached = lookupCacheRef.current[clean]
+    if (cached) {
+      setLookup({ word: clean, wordIndex, approxStart, approxEnd, loading: false, data: cached })
+      return
+    }
     setLookup({ word: clean, wordIndex, approxStart, approxEnd, loading: true })
     const res = await tutorAPI.lookup(clean, entry.transcript, entry.contentLanguage)
+    if (res.ok && res.result) lookupCacheRef.current[clean] = res.result   // cacheia só sucesso
     setLookup({ word: clean, wordIndex, approxStart, approxEnd, loading: false, data: res.ok ? res.result : undefined })
   }, [entry.transcript, entry.contentLanguage])
 
@@ -520,6 +530,14 @@ function EntryCard({ entry, index, speed = 1 }: { entry: TutorAnalysis; index: n
             <p className="text-xs text-muted/80 leading-relaxed mt-1">
               <span className="text-muted/40 mr-1.5 uppercase text-[10px] tracking-wider">EN</span>
               {entry.englishText}
+            </p>
+          )}
+          {/* Legenda na língua materna do usuário (campo `translation`, já vem no idioma dele) —
+              omitida quando seria redundante (= ao texto em EN, ou ao próprio transcript). */}
+          {entry.translation && entry.translation !== entry.englishText && entry.translation !== entry.transcript && (
+            <p className="text-[13px] text-foreground/85 leading-relaxed mt-1">
+              <span className="text-primary/55 mr-1.5 uppercase text-[10px] tracking-wider font-bold">{nativeLang.toUpperCase()}</span>
+              {entry.translation}
             </p>
           )}
         </div>
@@ -752,6 +770,15 @@ export function WordPopover({ lookup, lang, totalWords, originalAudioUrl, origin
   const t = useT()
   const { state, countdown, start, stop, cancel } = usePractice()
   const [attempt, setAttempt] = useState<{ ok: boolean; heard: string } | null>(null)
+  const ttsUrlRef = useRef<string>('')  // TTS pré-gerado ao abrir → botão toca instantâneo
+
+  // Pré-gera o TTS da palavra ao abrir o popover (gera+cacheia no main em segundo plano).
+  useEffect(() => {
+    ttsUrlRef.current = ''
+    ttsAPI.speak(lookup.word, lang)
+      .then(r => { if (r.ok && r.dataUrl) ttsUrlRef.current = r.dataUrl })
+      .catch(() => {})
+  }, [lookup.word, lang])
 
   // Slice of the original audio for this word. If word timestamps are missing,
   // use a short estimated slice instead of playing the whole sentence.
@@ -806,7 +833,7 @@ export function WordPopover({ lookup, lang, totalWords, originalAudioUrl, origin
           </button>
         )}
         <button
-          onClick={() => speak(lookup.word, lang)}
+          onClick={() => ttsUrlRef.current ? playClip(ttsUrlRef.current) : speak(lookup.word, lang)}
           className="flex items-center gap-0.5 text-[11px] text-[#9A6A1E] hover:brightness-90 transition-all font-semibold"
           title={t('listenTtsTitle')}
         >
@@ -826,9 +853,14 @@ export function WordPopover({ lookup, lang, totalWords, originalAudioUrl, origin
         </button>
       </div>
 
+      {/* Variantes de sotaque — ouça a palavra em outras pronúncias (US/UK/AU, BR/PT, …) */}
+      <div className="mb-1.5">
+        <PronunciationVariants word={lookup.word} lang={lang} />
+      </div>
+
       {/* Marcar conhecimento da palavra (alimenta a % de compreensão) */}
       <div className="flex items-center gap-1 gap-y-1 mb-1.5 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-muted/50 mr-0.5">{t('mark')}</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted mr-0.5 font-semibold">{t('mark')}</span>
         {([
           ['known', t('iKnow'), 'text-success', 'bg-success/15 border-success/40 text-success'],
           ['learning', t('learningWord'), 'text-warning', 'bg-warning/15 border-warning/40 text-warning'],
