@@ -2,12 +2,17 @@ import { describe, it, expect } from 'vitest'
 import { appLanguage, uiText } from './uiLanguage'
 
 describe('appLanguage', () => {
-  it('só "en" (ou en-XX) vira inglês; o resto cai no português', () => {
+  it('respeita a escolha explícita do usuário (pt/en)', () => {
     expect(appLanguage('en')).toBe('en')
     expect(appLanguage('en-US')).toBe('en')
     expect(appLanguage('pt-BR')).toBe('pt')
-    expect(appLanguage('')).toBe('pt')
-    expect(appLanguage(undefined)).toBe('pt')
+  })
+  it('sem escolha (1º uso) → segue o LOCALE do PC: pt → pt, resto → en', () => {
+    expect(appLanguage('', 'pt-BR')).toBe('pt')
+    expect(appLanguage(undefined, 'pt')).toBe('pt')
+    expect(appLanguage('', 'en-US')).toBe('en')
+    expect(appLanguage('', 'ko-KR')).toBe('en')   // coreano → inglês (não pt)
+    expect(appLanguage('', 'es-ES')).toBe('en')
   })
 })
 

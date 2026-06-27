@@ -2,10 +2,21 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { WindowManager } from '../windows/windowManager'
 import type { WindowName } from '../windows/windowConfigs'
 import { SettingsService } from '../services/settingsService'
+import { refreshActiveUser } from '../services/secureSessionStore'
+import { backupStore, restoreStoreIfEmpty } from '../services/storeSyncService'
 
-export function setupWindowHandlers(windowManager: WindowManager, onAuthComplete?: () => void): void {
+export function setupWindowHandlers(windowManager: WindowManager, onAuthComplete?: () => void, onLogout?: () => void): void {
   const settings = new SettingsService()
   const isOnboarded = () => settings.getAll().onboarded === '1'
+
+  // Logout: a sessão já foi limpa via auth:logout no renderer. Aqui só fechamos o workspace,
+  // resetamos o estado de autenticação e voltamos pra tela de login.
+  ipcMain.on('app:logout', () => {
+    onLogout?.()
+    refreshActiveUser()   // sessão limpa → zera o usuário ativo (próximo login escopa de novo)
+    windowManager.closeWorkspaceWindows()
+    windowManager.showWindow('auth')
+  })
 
   ipcMain.on('window:minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize())
   ipcMain.on('window:close', (event) => {
@@ -35,12 +46,17 @@ export function setupWindowHandlers(windowManager: WindowManager, onAuthComplete
 
   ipcMain.on('app:onboarding-complete', openWorkspace)
 
-  ipcMain.on('app:auth-complete', (event) => {
+  ipcMain.on('app:auth-complete', async (event) => {
     onAuthComplete?.()
+    refreshActiveUser()   // a sessão acabou de ser salva → escopa o store para ESTA conta
+    await restoreStoreIfEmpty()   // PC novo / store local vazio → puxa o backup da nuvem antes de abrir
     if (isOnboarded()) openWorkspace()
     else windowManager.showWindow('dashboard')   // 1º acesso: faz o onboarding no Dashboard
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
+
+  // Backup dos dados de aprendizado na nuvem (chamado ao fim da sessão). Best-effort.
+  ipcMain.on('sync:backup', () => { void backupStore() })
 
   let pendingReviewLang: string | null = null
   ipcMain.on('review:open', (_e, lang: string) => {

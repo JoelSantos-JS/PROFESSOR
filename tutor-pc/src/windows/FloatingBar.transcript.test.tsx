@@ -18,15 +18,22 @@ function renderFeed(props: Parameters<typeof TranscriptList>[0]) {
 
 describe('TranscriptList — transcrição ao vivo', () => {
   it('linhas finalizadas aparecem como texto fixo', () => {
-    const { container } = renderFeed({ lines: ['primeira', 'segunda'], interim: '', processing: false, error: null })
+    const { container } = renderFeed({ lines: [{ text: 'primeira', lang: 'en' }, { text: 'segunda', lang: 'en' }], interim: '', processing: false, error: null })
     expect(container.textContent).toContain('primeira')
     expect(container.textContent).toContain('segunda')
     expect(container.querySelector('[data-testid="interim-line"]')).toBeNull()
   })
 
+  it('cada linha mostra o idioma falado + bandeira (não mais "AUDIO")', () => {
+    const { container } = renderFeed({ lines: [{ text: '편의점', lang: 'ko' }], interim: '', processing: false, error: null })
+    expect(container.textContent).toContain('Korean')  // nome do idioma (UI em inglês)
+    expect(container.querySelector('img')).not.toBeNull()  // bandeira como IMAGEM (não emoji — Windows não renderiza)
+    expect(container.textContent).not.toContain('AUDIO')
+  })
+
   it('mostra a linha AO VIVO (interim) com cursor enquanto fala', () => {
     const { getByTestId, container } = renderFeed({
-      lines: ['linha anterior'],
+      lines: [{ text: 'linha anterior', lang: 'en' }],
       interim: 'Daqui a pouco a bola',
       processing: false,
       error: null,

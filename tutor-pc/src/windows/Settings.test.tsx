@@ -100,7 +100,7 @@ describe('Settings — salvar normaliza, auto-ativa e auto-testa', () => {
 
     // auto-testa e mostra o resultado inline
     await waitFor(() => expect(h.credTest).toHaveBeenCalledWith('openai'))
-    expect(await screen.findByText(/OK-openai/)).toBeInTheDocument()
+    expect(await screen.findByText(/Chave válida/i)).toBeInTheDocument()  // localizado no renderer (pt)
   })
 
   it('anthropic (sem transcrição) NÃO vira o provider de transcrição', async () => {
@@ -124,7 +124,7 @@ describe('Settings — testar provider já configurado', () => {
     const testBtn = await screen.findByRole('button', { name: /^Testar$/i })
     await u.click(testBtn)
     await waitFor(() => expect(h.credTest).toHaveBeenCalledWith('groq'))
-    expect(await screen.findByText(/OK-groq/)).toBeInTheDocument()
+    expect(await screen.findByText(/Chave válida/i)).toBeInTheDocument()  // localizado no renderer (pt)
   })
 
   it('lista todos os 4 providers', async () => {

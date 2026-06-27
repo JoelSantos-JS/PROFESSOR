@@ -6,6 +6,7 @@ import { shouldRejectTranscript, type WhisperSegment } from '../lib/transcriptFi
 import { normalizeLang } from '../lib/langNormalize.js'
 import { cuesFromWhisperResponse, extractWhisperWords, type WhisperWord, type Cue, type WhisperTimedSegment } from '../lib/whisperWords.js'
 import { providerFetch } from '../lib/providerFetch.js'
+import { parseRetryDelayMs } from '../lib/retryAfter.js'
 
 export interface TranscribeResult {
   text: string
@@ -33,6 +34,15 @@ function whisperShape(json: WhisperResponse): string {
   ].filter(Boolean).join(' ')
 }
 
+/** Sinais médios de não-fala (p/ entender por que algo foi descartado como alucinação). */
+function nonSpeechSignals(json: WhisperResponse): string {
+  const segs = Array.isArray(json.segments) ? json.segments : []
+  if (!segs.length) return 'sem-segmentos'
+  const n = segs.length
+  const avg = (pick: (s: WhisperSegment) => number | undefined) => segs.reduce((a, s) => a + (pick(s) ?? 0), 0) / n
+  return `no_speech=${avg(s => s.no_speech_prob).toFixed(2)} logprob=${avg(s => s.avg_logprob).toFixed(2)} compression=${avg(s => s.compression_ratio).toFixed(2)}`
+}
+
 function formatProviderError(body: string): string {
   try {
     const parsed = JSON.parse(body) as { error?: { message?: string; status?: string } }
@@ -44,8 +54,13 @@ function formatProviderError(body: string): string {
   }
 }
 
+// Orçamento de requisições de transcrição p/ o free tier (Groq = 20/min). As PRÉVIAS ao vivo só
+// disparam abaixo deste teto; assim sobra folga garantida pras FINAIS (que não podem ser perdidas).
+const INTERIM_RATE_BUDGET = 12
+
 export class AudioService {
   private store = new StoreService()
+  private requestTimes: number[] = []   // timestamps das transcrições no último minuto (rate budget)
 
   constructor(
     private credentials: CredentialsService,
@@ -72,7 +87,7 @@ export class AudioService {
 
   // `hint` biases Whisper toward expected words (used for single-word practice
   // where short, context-free audio is otherwise easy to mis-transcribe).
-  async transcribe(audioBuffer: ArrayBuffer | Buffer, hint?: string): Promise<TranscribeResult> {
+  async transcribe(audioBuffer: ArrayBuffer | Buffer, hint?: string, langOverride?: string, allowRetry = false): Promise<TranscribeResult> {
     const settings = this.settings.getAll()
     let activeTranscriptionProvider = settings.activeTranscriptionProvider
     let apiKey = this.credentials.get(activeTranscriptionProvider)
@@ -94,19 +109,32 @@ export class AudioService {
       ? Buffer.from(new Uint8Array(audioBuffer))
       : audioBuffer
 
+    // Rate budget (20/min no Groq free): a FINAL (allowRetry) tem prioridade e sempre passa; a
+    // PRÉVIA ao vivo é PULADA quando o minuto já está cheio — assim a final nunca toma 429 por
+    // causa das prévias, e não se perde frase. (Pular a prévia só atrasa o "ao vivo" sob carga.)
+    const now = Date.now()
+    this.requestTimes = this.requestTimes.filter(t => now - t < 60_000)
+    if (!allowRetry && this.requestTimes.length >= INTERIM_RATE_BUDGET) {
+      console.log(`[audio] prévia pulada (rate budget ${this.requestTimes.length}/min) — reservando p/ a final`)
+      return { text: '', language: '', error: null }
+    }
+    this.requestTimes.push(now)
+
     console.log(`[audio] provider=${activeTranscriptionProvider} received format=${this.blobMeta(buf).name} bytes=${buf.length}`)
     // Só FORÇA o idioma quando o usuário definiu o idioma do conteúdo explicitamente.
     // Em 'auto', deixa o Whisper detectar — NÃO cair no targetLanguage (que é o idioma
     // que o usuário quer APRENDER, não o do conteúdo), senão um doroma em mandarim seria
     // transcrito à força como inglês.
+    // Prioridade: idioma FIXADO pelo usuário > idioma TRAVADO na sessão (renderer) > auto.
+    // O lock da sessão evita o flip do Whisper (coreano→japonês, ruído→"you") em "auto".
     const spokenLanguage = settings.contentLanguage && settings.contentLanguage !== 'auto'
       ? normalizeLang(settings.contentLanguage)
-      : ''
+      : (langOverride && langOverride !== 'auto' ? normalizeLang(langOverride) : '')
 
     let result: TranscribeResult
     switch (activeTranscriptionProvider) {
-      case 'openai':  result = await this.whisperOpenAI(buf, apiKey, hint, spokenLanguage); break
-      case 'groq':    result = await this.whisperGroq(buf, apiKey, hint, spokenLanguage); break
+      case 'openai':  result = await this.whisperOpenAI(buf, apiKey, hint, spokenLanguage, allowRetry); break
+      case 'groq':    result = await this.whisperGroq(buf, apiKey, hint, spokenLanguage, allowRetry); break
       case 'gemini':  result = await this.geminiAudio(buf, apiKey); break
       default:
         throw new Error(`Provider "${activeTranscriptionProvider}" não suporta transcrição.`)
@@ -124,54 +152,68 @@ export class AudioService {
     return { type: 'audio/webm', name: 'audio.webm' }
   }
 
-  // Whisper verbose_json returns detected language automatically
-  private async whisperOpenAI(buf: Buffer, apiKey: string, hint?: string, spokenLanguage?: string): Promise<TranscribeResult> {
-    const form = new FormData()
-    const meta = this.blobMeta(buf)
-    form.append('file', new Blob([buf], { type: meta.type }), meta.name)
-    form.append('model', 'whisper-1')
-    form.append('response_format', 'verbose_json')
-    form.append('timestamp_granularities[]', 'segment')
-    form.append('timestamp_granularities[]', 'word')
-    form.append('temperature', '0')
-    if (spokenLanguage && spokenLanguage !== 'auto') form.append('language', spokenLanguage)
-    if (hint) form.append('prompt', hint)
+  // POST com retry em 429 (rate limit) — só quando allowRetry (finais). O Whisper free tier do Groq
+  // é 20 req/min; a transcrição ao vivo estoura isso, e SEM retry o FINAL é perdido. O form é
+  // reconstruído a cada tentativa (o body do fetch é consumido).
+  private async whisperFetch(label: string, url: string, apiKey: string, buildForm: () => FormData, allowRetry: boolean): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      const res = await providerFetch(label, url, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: buildForm() })
+      if (res.status === 429 && allowRetry && attempt < 3) {
+        const waitMs = parseRetryDelayMs(await res.text())
+        console.log(`[audio] ${label} 429 → retry em ${waitMs}ms (tentativa ${attempt + 1})`)
+        await new Promise(r => setTimeout(r, waitMs))
+        continue
+      }
+      return res
+    }
+  }
 
-    const res = await providerFetch('OpenAI transcription', 'https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-    })
+  // Whisper verbose_json returns detected language automatically
+  private async whisperOpenAI(buf: Buffer, apiKey: string, hint?: string, spokenLanguage?: string, allowRetry = false): Promise<TranscribeResult> {
+    const meta = this.blobMeta(buf)
+    const buildForm = () => {
+      const form = new FormData()
+      form.append('file', new Blob([buf], { type: meta.type }), meta.name)
+      form.append('model', 'whisper-1')
+      form.append('response_format', 'verbose_json')
+      form.append('timestamp_granularities[]', 'segment')
+      form.append('timestamp_granularities[]', 'word')
+      form.append('temperature', '0')
+      if (spokenLanguage && spokenLanguage !== 'auto') form.append('language', spokenLanguage)
+      if (hint) form.append('prompt', hint)
+      return form
+    }
+    const res = await this.whisperFetch('OpenAI transcription', 'https://api.openai.com/v1/audio/transcriptions', apiKey, buildForm, allowRetry)
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`)
     const json = await res.json() as WhisperResponse
     if (shouldRejectTranscript(json.text ?? '', json.segments ?? [])) {
+      console.log(`[audio] DESCARTADO (não-fala): "${(json.text ?? '').trim()}" — ${nonSpeechSignals(json)}`)
       return { text: '', language: normalizeLang(json.language) || 'auto' }
     }
     return { text: json.text.trim(), language: normalizeLang(json.language) || 'auto', cues: cuesFromWhisperResponse(json) }
   }
 
-  private async whisperGroq(buf: Buffer, apiKey: string, hint?: string, spokenLanguage?: string): Promise<TranscribeResult> {
-    const form = new FormData()
+  private async whisperGroq(buf: Buffer, apiKey: string, hint?: string, spokenLanguage?: string, allowRetry = false): Promise<TranscribeResult> {
     const meta = this.blobMeta(buf)
-    form.append('file', new Blob([buf], { type: meta.type }), meta.name)
-    form.append('model', 'whisper-large-v3')
-    form.append('response_format', 'verbose_json')
-    form.append('timestamp_granularities[]', 'segment')
-    form.append('timestamp_granularities[]', 'word')
-    form.append('temperature', '0')
-    if (spokenLanguage && spokenLanguage !== 'auto') form.append('language', spokenLanguage)
-    if (hint) form.append('prompt', hint)
+    const buildForm = () => {
+      const form = new FormData()
+      form.append('file', new Blob([buf], { type: meta.type }), meta.name)
+      form.append('model', 'whisper-large-v3')
+      form.append('response_format', 'verbose_json')
+      form.append('timestamp_granularities[]', 'segment')
+      form.append('timestamp_granularities[]', 'word')
+      form.append('temperature', '0')
+      if (spokenLanguage && spokenLanguage !== 'auto') form.append('language', spokenLanguage)
+      if (hint) form.append('prompt', hint)
+      return form
+    }
     console.log(`[audio] groq request model=whisper-large-v3 file=${meta.name} language=${spokenLanguage || 'auto'} timestamps=segment,word hint=${Boolean(hint)}`)
-
-    const res = await providerFetch('Groq transcription', 'https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-    })
+    const res = await this.whisperFetch('Groq transcription', 'https://api.groq.com/openai/v1/audio/transcriptions', apiKey, buildForm, allowRetry)
     if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`)
     const json = await res.json() as WhisperResponse
     console.log(`[audio] groq response ${whisperShape(json)}`)
     if (shouldRejectTranscript(json.text ?? '', json.segments ?? [])) {
+      console.log(`[audio] DESCARTADO (não-fala): "${(json.text ?? '').trim()}" — ${nonSpeechSignals(json)}`)
       return { text: '', language: normalizeLang(json.language) || 'auto' }
     }
     const cues = cuesFromWhisperResponse(json)

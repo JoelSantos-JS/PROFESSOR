@@ -88,7 +88,7 @@ export default function Review() {
   }, [card])
 
   return (
-    <div className="flex flex-col h-screen app-paper text-foreground">
+    <div className="flex flex-col h-screen app-paper text-foreground border border-border/80 ring-1 ring-black/[0.04]">
       <TitleBar title={t('review')} />
 
       {/* Language separator — one deck per studied language */}

@@ -10,9 +10,9 @@ import { setupMediaHandlers } from './mediaHandlers.js'
 import { setupAuthHandlers } from './authHandlers.js'
 import { setupPronunciationHandlers } from './pronunciationHandlers.js'
 
-export function setupIPC(windowManager: WindowManager, onAuthComplete?: () => void): void {
+export function setupIPC(windowManager: WindowManager, onAuthComplete?: () => void, onLogout?: () => void): void {
   setupAuthHandlers()
-  setupWindowHandlers(windowManager, onAuthComplete)
+  setupWindowHandlers(windowManager, onAuthComplete, onLogout)
   setupSettingsHandlers()
   setupCredentialsHandlers()
   setupAudioHandlers()

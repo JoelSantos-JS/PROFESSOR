@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound, AlertTriangle, X } from 'lucide-react'
+import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound, AlertTriangle, X, LogOut } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { settingsAPI, credentialsAPI, forvoAPI } from '../services/electron'
+import { settingsAPI, credentialsAPI, forvoAPI, authAPI, windowAPI } from '../services/electron'
 import { validateApiKey, pickActiveProvider } from '../lib/apiKeyValidation'
 import { NATIVE_LANGUAGES } from '../lib/nativeLang'
 import { contentLanguageOptions, normalizeContentLanguage } from '../lib/contentLanguages'
 import { APP_LANGUAGES, appLanguage, uiText, type AppLanguage } from '../lib/uiLanguage'
+import { listMicrophones, micLabel } from '../lib/audioDevices'
 import UsageCostPanel from '../components/UsageCostPanel'
 import type { AppSettings, ProviderId, ProviderStatus, TtsProviderId } from '../types'
 
@@ -77,10 +78,13 @@ export default function Settings() {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [testState, setTestState] = useState<Partial<Record<ProviderId, TestState>>>({})
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([])
+  const [logoutConfirm, setLogoutConfirm] = useState(false)
 
   useEffect(() => {
     settingsAPI.getAll().then(setSettings)
     credentialsAPI.list().then(setProviders)
+    listMicrophones().then(setMics)
   }, [])
 
   const isConfigured = (id: ProviderId) =>
@@ -159,7 +163,9 @@ export default function Settings() {
     const result = await credentialsAPI.test(id)
     setTestState(prev => ({
       ...prev,
-      [id]: { testing: false, ok: result.ok, msg: result.ok ? (result.message ?? 'Chave válida ✓') : (result.error ?? 'Falha no teste') },
+      // Localiza no renderer (a mensagem do main vinha hardcoded em PT). Sucesso → chave válida;
+      // erro → mostra o erro técnico do provedor (já vem da API) ou um fallback localizado.
+      [id]: { testing: false, ok: result.ok, msg: result.ok ? t('keyValid') : (result.error ?? t('keyTestFailed')) },
     }))
   }
 
@@ -238,10 +244,10 @@ export default function Settings() {
                       href={meta.docsUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-muted hover:text-foreground transition-colors"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-primary/80 hover:text-primary transition-colors whitespace-nowrap"
                       title={t('getKey')}
                     >
-                      <ExternalLink size={13} />
+                      <ExternalLink size={12} /> {t('getKey')}
                     </a>
                     {configured && !isEditing && (
                       <button
@@ -381,7 +387,7 @@ export default function Settings() {
             <div className="flex items-center justify-between px-4 py-3 gap-3">
               <div className="min-w-0">
                 <span className="text-sm text-muted">{t('appLanguage')}</span>
-                <p className="text-[11px] text-muted/70 mt-0.5">{t('appLanguageNote')}</p>
+                <p className="text-[11px] text-muted mt-0.5">{t('appLanguageNote')}</p>
               </div>
               <select
                 aria-label={t('appLanguage')}
@@ -405,7 +411,7 @@ export default function Settings() {
             <div className="flex items-center justify-between px-4 py-3 gap-3">
               <div className="min-w-0">
                 <span className="text-sm text-muted">{t('explanationsLanguage')}</span>
-                <p className="text-[11px] text-muted/70 mt-0.5">{t('explanationsNote')}</p>
+                <p className="text-[11px] text-muted mt-0.5">{t('explanationsNote')}</p>
               </div>
               <select
                 aria-label={t('yourLanguage')}
@@ -422,13 +428,56 @@ export default function Settings() {
         </section>
 
         {/* Idioma do conteúdo (transcrição) */}
+        {/* Áudio: microfone (sua voz) + fonte da transcrição (som do PC ou um microfone) */}
+        <section>
+          <h2 className="label-eyebrow mb-3">{t('audioSection')}</h2>
+          <div className="paper-card divide-y divide-border">
+            {/* O que transcrever */}
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <span className="text-sm text-muted">{t('transcribeSource')}</span>
+                <p className="text-[11px] text-muted mt-0.5">{t('transcribeSourceNote')}</p>
+              </div>
+              <select
+                aria-label={t('transcribeSource')}
+                value={(settings.transcriptionSource as string) ?? 'system'}
+                onChange={e => updateSetting('transcriptionSource', e.target.value)}
+                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer max-w-[200px]"
+              >
+                <option value="system">{t('systemAudioOption')}</option>
+                {mics.map((d, i) => (
+                  <option key={d.deviceId} value={d.deviceId}>🎤 {micLabel(d.label, i, uiLang)}</option>
+                ))}
+              </select>
+            </div>
+            {/* Microfone da sua voz (prática) */}
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <span className="text-sm text-muted">{t('micYourVoice')}</span>
+                <p className="text-[11px] text-muted mt-0.5">{t('micYourVoiceNote')}</p>
+              </div>
+              <select
+                aria-label={t('micYourVoice')}
+                value={(settings.audioInputDevice as string) ?? 'default'}
+                onChange={e => updateSetting('audioInputDevice', e.target.value)}
+                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer max-w-[200px]"
+              >
+                <option value="default">{t('defaultMic')}</option>
+                {mics.map((d, i) => (
+                  <option key={d.deviceId} value={d.deviceId}>{micLabel(d.label, i, uiLang)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+
         <section>
           <h2 className="label-eyebrow mb-3">{t('contentLanguage')}</h2>
           <div className="paper-card divide-y divide-border">
             <div className="flex items-center justify-between px-4 py-3 gap-3">
               <div className="min-w-0">
                 <span className="text-sm text-muted">{t('contentLanguageLabel')}</span>
-                <p className="text-[11px] text-muted/70 mt-0.5">{t('contentLanguageNote')}</p>
+                <p className="text-[11px] text-muted mt-0.5">{t('contentLanguageNote')}</p>
               </div>
               <select
                 aria-label={t('contentLanguage')}
@@ -459,7 +508,7 @@ export default function Settings() {
             <div className="flex items-center justify-between px-4 py-3 gap-3">
               <div className="min-w-0">
                 <span className="text-sm text-muted">{t('kokoroVoice')}</span>
-                <p className="text-[11px] text-muted/70 mt-0.5">{t('kokoroNote')}</p>
+                <p className="text-[11px] text-muted mt-0.5">{t('kokoroNote')}</p>
               </div>
               <select
                 value={(settings.ttsVoice as string) ?? 'af_heart'}
@@ -523,14 +572,64 @@ export default function Settings() {
           <h2 className="label-eyebrow mb-3">{t('about')}</h2>
           <div className="paper-card p-4">
             <p className="display-title text-xl text-foreground mb-1">Soaken</p>
-            <p className="text-xs text-muted">
+            <p className="text-[11px] text-muted/80 mb-1">v0.1.0 · {uiLang === 'en' ? 'Dive into the language' : 'Mergulhe no idioma'}</p>
+            <p className="text-xs text-muted leading-relaxed">
               {uiLang === 'en'
-                ? 'v0.1.0 - M0 Shell - Your floating English tutor for any PC audio.'
-                : 'v0.1.0 - M0 Shell - Seu professor flutuante de ingles para qualquer audio do PC.'}
+                ? 'Your floating tutor for any language. Soaken listens to any audio on your PC — videos, calls, shows — and turns it into real speaking & pronunciation practice.'
+                : 'Seu professor flutuante para qualquer idioma. O Soaken escuta qualquer áudio do PC — vídeos, calls, séries — e transforma em prática real de fala e pronúncia.'}
             </p>
           </div>
         </section>
+
+        {/* Conta — sair */}
+        <section>
+          <button
+            onClick={() => setLogoutConfirm(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-danger bg-danger/10 hover:bg-danger/20 border border-danger/30 transition-colors"
+          >
+            <LogOut size={15} /> {t('logout')}
+          </button>
+        </section>
       </div>
+
+      {/* Modal de confirmação de logout (no nosso design, no lugar do confirm() nativo) */}
+      {logoutConfirm && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-5 fade-up"
+          onClick={() => setLogoutConfirm(false)}
+        >
+          <div
+            className="paper-card w-full max-w-[320px] p-5 text-center"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="mx-auto mb-3 w-11 h-11 rounded-full bg-danger/12 grid place-items-center text-danger">
+              <LogOut size={20} />
+            </div>
+            <p className="display-title text-lg text-foreground mb-1">{t('logout')}</p>
+            <p className="text-[13px] text-muted leading-relaxed mb-5">{t('logoutConfirm')}</p>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setLogoutConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-foreground bg-surface-2 hover:bg-border/60 border border-border transition-colors"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={async () => {
+                  setLogoutConfirm(false)
+                  await authAPI.logout().catch(() => {})
+                  windowAPI.logout()  // fecha o workspace e volta pra tela de login
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white bg-danger hover:bg-danger/90 transition-colors"
+              >
+                <LogOut size={14} /> {t('logout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -586,7 +685,7 @@ function TtsSelect({
       <div className="min-w-0">
         <span className="text-sm text-muted">{label}</span>
         {selected && (
-          <p className="text-[11px] text-muted/70 mt-0.5">{selected.note}</p>
+          <p className="text-[11px] text-muted mt-0.5">{selected.note}</p>
         )}
       </div>
       <select

@@ -53,3 +53,27 @@ export class SecureSessionStore {
     }
   }
 }
+
+// ── Usuário ativo (para ISOLAR dados por conta) ───────────────────────────────
+// Os dados de aprendizado (store) são escopados pelo id do usuário logado, senão uma conta veria
+// os dados de outra na mesma máquina. Cacheado p/ não decifrar a sessão a cada operação de store.
+let cachedUserId: string | null = null
+
+function readUserId(): string {
+  try {
+    return new SecureSessionStore().load()?.session?.user?.id ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** Id do usuário logado, ou '' se ninguém. */
+export function activeUserId(): string {
+  if (cachedUserId === null) cachedUserId = readUserId()
+  return cachedUserId
+}
+
+/** Re-lê do disco — chamar em login e logout (a sessão mudou). */
+export function refreshActiveUser(): void {
+  cachedUserId = readUserId()
+}

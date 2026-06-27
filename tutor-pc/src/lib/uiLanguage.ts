@@ -5,8 +5,15 @@ export const APP_LANGUAGES: Array<{ code: AppLanguage; name: string }> = [
   { code: 'en', name: 'English' },
 ]
 
-export function appLanguage(raw?: string | null): AppLanguage {
-  return raw?.split('-')[0]?.toLowerCase() === 'en' ? 'en' : 'pt'
+/**
+ * Idioma do app. Se o usuário JÁ escolheu (raw preenchido), respeita. Senão (1º uso), segue o
+ * LOCALE do PC: português → 'pt', qualquer outro → 'en' (inglês é o padrão internacional, já que
+ * a UI só tem pt/en). Ex.: PC em inglês/coreano abre em inglês, não em pt.
+ */
+export function appLanguage(raw?: string | null, locale?: string): AppLanguage {
+  const sysLocale = locale ?? (typeof navigator !== 'undefined' ? navigator.language : '')
+  const code = (raw && raw.trim()) ? raw : sysLocale
+  return code?.split('-')[0]?.toLowerCase() === 'pt' ? 'pt' : 'en'
 }
 
 const UI = {
@@ -36,6 +43,18 @@ const UI = {
     saved: 'Salvo',
     test: 'Testar',
     testing: 'Testando...',
+    keyValid: 'Chave válida ✓',
+    keyTestFailed: 'Falha no teste',
+    logout: 'Sair da conta',
+    logoutConfirm: 'Você precisará entrar de novo para usar o app.',
+    audioLangTitle: 'Idioma do áudio — clique p/ alternar. Travar no idioma certo deixa a transcrição bem mais precisa (Auto pode errar/embaralhar).',
+    audioSection: 'Áudio',
+    micYourVoice: 'Microfone (sua voz)',
+    micYourVoiceNote: 'Usado na prática de pronúncia (quando você fala).',
+    transcribeSource: 'O que transcrever',
+    transcribeSourceNote: 'A fonte que o app escuta e transcreve.',
+    systemAudioOption: '🔊 Som do PC (vídeos, calls)',
+    defaultMic: 'Microfone padrão',
     removeKey: 'Remover chave',
     getKey: 'Obter chave',
     cancel: 'Cancelar',
@@ -188,6 +207,7 @@ const UI = {
     pressListenHint: 'Aperte Escutar e dê play no vídeo.',
     audioLabel: 'Áudio',
     capturing: 'Capturando...',
+    downloadingVoice: 'Baixando voz local…',
     practiceSpeechHere: 'Suas falas de prática aparecem aqui.',
     practiceHint: 'Use "Praticar" no Tutor Board para gravar e comparar.',
     attempt: 'Tentativa',
@@ -379,6 +399,18 @@ const UI = {
     saved: 'Saved',
     test: 'Test',
     testing: 'Testing...',
+    keyValid: 'Valid key ✓',
+    keyTestFailed: 'Test failed',
+    logout: 'Log out',
+    logoutConfirm: 'You will need to sign in again to use the app.',
+    audioLangTitle: 'Audio language — click to switch. Locking the right language makes transcription far more accurate (Auto can misdetect).',
+    audioSection: 'Audio',
+    micYourVoice: 'Microphone (your voice)',
+    micYourVoiceNote: 'Used for pronunciation practice (when you speak).',
+    transcribeSource: 'What to transcribe',
+    transcribeSourceNote: 'The source the app listens to and transcribes.',
+    systemAudioOption: '🔊 PC sound (videos, calls)',
+    defaultMic: 'Default microphone',
     removeKey: 'Remove key',
     getKey: 'Get key',
     cancel: 'Cancel',
@@ -531,6 +563,7 @@ const UI = {
     pressListenHint: 'Press Listen and play the video.',
     audioLabel: 'Audio',
     capturing: 'Capturing...',
+    downloadingVoice: 'Downloading local voice…',
     practiceSpeechHere: 'Your practice attempts appear here.',
     practiceHint: 'Use "Practice" in the Tutor Board to record and compare.',
     attempt: 'Attempt',

@@ -1,8 +1,10 @@
 import { EdgeTTS } from 'node-edge-tts'
 import { resolveVoice } from '../lib/ttsVoices.js'
+import { aggregateDownload, emptyDownload } from '../lib/modelDownload.js'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
+import { mkdir, readFile, unlink, writeFile, cp } from 'fs/promises'
+import { existsSync, readdirSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { app } from 'electron'
 import { SettingsService } from './settingsService.js'
@@ -103,14 +105,49 @@ export async function synthesizeVoice(text: string, voice: string, lang = ''): P
   })
 }
 
-export function warmupLocalTts(): void {
+/** Diretório onde a voz local (Kokoro) é baixada. */
+function localVoiceModelDir(): string {
+  return join(app.getPath('userData'), 'models', 'huggingface')
+}
+
+/** True se a voz local JÁ está disponível em userData (modelo presente em disco). */
+export function localVoiceModelExists(): boolean {
+  try {
+    const dir = localVoiceModelDir()
+    return existsSync(dir) && readdirSync(dir).length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 1º início do app instalado: copia o modelo EMBUTIDO (resources/models/huggingface) para userData,
+ * evitando qualquer download. Em dev (sem bundle) é no-op → cai no download normal. Idempotente.
+ */
+export async function seedLocalVoiceModelFromBundle(): Promise<void> {
+  try {
+    if (localVoiceModelExists()) return  // já está em userData
+    const bundled = join(process.resourcesPath, 'models', 'huggingface')
+    if (!existsSync(bundled) || readdirSync(bundled).length === 0) return  // dev / sem bundle
+    await cp(bundled, localVoiceModelDir(), { recursive: true })
+    console.log('[tts] voz local instalada do pacote (sem download)')
+  } catch (err) {
+    console.warn('[tts] seed da voz falhou:', (err as Error).message)
+  }
+}
+
+/**
+ * Aquece a voz local: carrega o Kokoro (baixando o modelo se faltar). Retorna a Promise para o
+ * processo principal poder ESPERAR o download no 1º início (e abrir o app já com a voz pronta).
+ */
+export function warmupLocalTts(): Promise<void> {
   const settings = new SettingsService().getAll()
-  if ((settings.activeTtsProvider ?? 'kokoro') !== 'kokoro') return
+  if ((settings.activeTtsProvider ?? 'kokoro') !== 'kokoro') return Promise.resolve()
 
   const voice = normalizeKokoroVoice(settings.ttsVoice)
-  generateKokoroInWorker('Ready.', voice)
-    .then(() => console.log('[tts] kokoro warmup complete'))
-    .catch(err => console.warn('[tts] kokoro warmup failed:', (err as Error).message))
+  return generateKokoroInWorker('Ready.', voice)
+    .then(() => { console.log('[tts] kokoro warmup complete') })
+    .catch(err => { console.warn('[tts] kokoro warmup failed:', (err as Error).message) })
 }
 
 interface CacheRequest {
@@ -197,6 +234,17 @@ interface KokoroWorkerMessage {
   ok: boolean
   audio?: ArrayBuffer
   error?: string
+  type?: 'progress'
+  file?: string
+  loaded?: number
+  total?: number
+}
+
+// Progresso do download do modelo (1ª vez). main.ts assina e repassa pro renderer ("Baixando voz X%").
+let downloadState = emptyDownload
+let kokoroProgressListener: ((p: { percent: number; active: boolean }) => void) | null = null
+export function setKokoroProgressListener(cb: (p: { percent: number; active: boolean }) => void): void {
+  kokoroProgressListener = cb
 }
 
 let kokoroWorker: Worker | null = null
@@ -217,6 +265,12 @@ function getKokoroWorker(): Worker {
   console.log(`[tts] kokoro worker started model=${KOKORO_MODEL_ID} dtype=${KOKORO_DTYPE}`)
 
   kokoroWorker.on('message', (message: KokoroWorkerMessage) => {
+    if (message.type === 'progress') {
+      const r = aggregateDownload(downloadState, { file: message.file, loaded: message.loaded, total: message.total })
+      downloadState = r.state
+      kokoroProgressListener?.({ percent: r.percent, active: r.active })
+      return
+    }
     const pending = kokoroPending.get(message.id)
     if (!pending) return
     clearTimeout(pending.timeout)

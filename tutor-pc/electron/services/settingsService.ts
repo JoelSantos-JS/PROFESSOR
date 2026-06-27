@@ -8,7 +8,8 @@ export interface AppSettings {
   appLanguage: string       // UI language (pt/en). Separate from nativeLanguage.
   nativeLanguage: string
   contentLanguage: string   // language being spoken in the audio (zh, en, ko, ja, es, pt, auto)
-  audioInputDevice: string
+  audioInputDevice: string    // microfone da SUA VOZ (prática/pronúncia); 'default' = padrão do SO
+  transcriptionSource: string // o que TRANSCREVER: 'system' (som do PC) ou um deviceId de microfone
   activeAiProvider: ProviderId
   activeTranscriptionProvider: ProviderId
   activeTtsProvider: 'kokoro' | 'edge'
@@ -28,6 +29,7 @@ const DEFAULTS: AppSettings = {
   nativeLanguage: 'pt-BR',
   contentLanguage: 'auto',
   audioInputDevice: 'default',
+  transcriptionSource: 'system',
   activeAiProvider: 'gemini',
   activeTranscriptionProvider: 'gemini',
   activeTtsProvider: 'kokoro',

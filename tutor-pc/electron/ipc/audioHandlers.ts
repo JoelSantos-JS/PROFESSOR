@@ -33,9 +33,9 @@ export function setupAudioHandlers(): void {
   })
 
   // Renderer sends a recorded audio chunk; main process transcribes it
-  ipcMain.handle('audio:transcribe', async (_e, buffer: ArrayBuffer, hint?: string) => {
+  ipcMain.handle('audio:transcribe', async (_e, buffer: ArrayBuffer, hint?: string, langOverride?: string, allowRetry?: boolean) => {
     try {
-      const result = await audioService.transcribe(buffer, hint)
+      const result = await audioService.transcribe(buffer, hint, langOverride, allowRetry)
       console.log(`[audio] transcribed (${result.language}) cues=${result.cues?.length ?? 0}:`, result.text?.slice(0, 60))
       return { text: result.text, language: result.language, cues: result.cues ?? [], error: null }
     } catch (err) {

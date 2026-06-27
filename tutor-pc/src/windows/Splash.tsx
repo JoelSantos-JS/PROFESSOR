@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { SPLASH_STEPS, nextStatusIndex } from '../lib/splashStatus'
+import { splashSteps, splashTagline, nextStatusIndex } from '../lib/splashStatus'
+import { appLanguage } from '../lib/uiLanguage'
+import { settingsAPI } from '../services/electron'
 
 // Tela de abertura do Soaken (Deep Soak). A janela é 320×400 frameless/transparente, então o
 // root preenche tudo. Animações vêm de um <style> embutido (keyframes custom) e respeitam
@@ -63,19 +65,26 @@ function prefersReducedMotion(): boolean {
 export default function Splash() {
   const [stepIdx, setStepIdx] = useState(0)
   const [visible, setVisible] = useState(true)
+  // Idioma: começa pelo LOCALE do PC (síncrono) e refina com a escolha salva do usuário.
+  const [lang, setLang] = useState(() => appLanguage())
   const reduced = useRef(prefersReducedMotion())
+  const steps = splashSteps(lang)
+
+  useEffect(() => {
+    settingsAPI.getAll().then(s => setLang(appLanguage(s.appLanguage))).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (reduced.current) return  // reduced-motion: status estático, sem timer
     const id = setInterval(() => {
       setVisible(false)
       setTimeout(() => {
-        setStepIdx(i => nextStatusIndex(SPLASH_STEPS.length, i))
+        setStepIdx(i => nextStatusIndex(splashSteps(lang).length, i))
         setVisible(true)
       }, 200)
     }, 1400)
     return () => clearInterval(id)
-  }, [])
+  }, [lang])
 
   return (
     <>
@@ -86,12 +95,12 @@ export default function Splash() {
         <div className="sk-brand">
           <div className="sk-iconwrap"><img src="icon/soaken-512.png" alt="Soaken" /></div>
           <div className="sk-name">Soaken</div>
-          <div className="sk-tagline">Mergulhe no idioma</div>
+          <div className="sk-tagline">{splashTagline(lang)}</div>
         </div>
 
         <div className="sk-loading">
           <div className="sk-bar"><i /></div>
-          <div className="sk-status" style={{ opacity: visible ? 1 : 0 }}>{SPLASH_STEPS[stepIdx]}</div>
+          <div className="sk-status" style={{ opacity: visible ? 1 : 0 }}>{steps[stepIdx]}</div>
         </div>
         <div className="sk-ver">Deep Soak</div>
 

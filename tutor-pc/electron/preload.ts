@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
     pendingReviewLang: () => ipcRenderer.invoke('review:pending-lang'),
     onboardingComplete: () => ipcRenderer.send('app:onboarding-complete'),
     authComplete: () => ipcRenderer.send('app:auth-complete'),
+    logout: () => ipcRenderer.send('app:logout'),
   },
   settings: {
     getAll: () => ipcRenderer.invoke('settings:get-all'),
@@ -36,7 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   audio: {
     getSources: () => ipcRenderer.invoke('audio:get-sources'),
-    transcribe: (buffer: ArrayBuffer, hint?: string) => ipcRenderer.invoke('audio:transcribe', buffer, hint),
+    transcribe: (buffer: ArrayBuffer, hint?: string, langOverride?: string, allowRetry?: boolean) => ipcRenderer.invoke('audio:transcribe', buffer, hint, langOverride, allowRetry),
   },
   tutor: {
     analyze: (transcript: string, language: string, audioUrl?: string, cues?: unknown) => ipcRenderer.invoke('tutor:analyze', transcript, language, audioUrl, cues),
@@ -52,6 +53,9 @@ contextBridge.exposeInMainWorld('api', {
   pronunciation: {
     native: (word: string, lang: string) => ipcRenderer.invoke('pronunciation:native', word, lang),
     audio: (url: string) => ipcRenderer.invoke('pronunciation:audio', url),
+  },
+  sync: {
+    backup: () => ipcRenderer.send('sync:backup'),
   },
   forvo: {
     setKey: (key: string) => ipcRenderer.invoke('forvo:set-key', key),

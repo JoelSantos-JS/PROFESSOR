@@ -130,6 +130,13 @@ export function buildSystemPrompt(detectedLanguage: string, native = 'pt'): stri
     ? `      "romanization": "${roma.instruction} for this word/phrase only",`
     : ''
 
+  // Conteúdo no MESMO idioma do nativo: NÃO traduzir (inglês→inglês não tem o que traduzir, e a IA
+  // acaba escolhendo um idioma aleatório — ex.: espanhol). Aí o "translation" vira DEFINIÇÃO no
+  // próprio idioma.
+  const vocabTranslationField = sameAsNative
+    ? `      "translation": "a short ${nat} definition/synonym of the word — SAME language, NEVER another language",`
+    : `      "translation": "translation into ${nat}",`
+
   const langNote = roma
     ? `The content is in language code "${detectedLanguage}". You MUST ALWAYS include the "romanization" field (${roma.instruction}) for the full transcript AND for every vocab item — this is mandatory and must never be omitted or left blank. `
     : ''
@@ -145,15 +152,19 @@ ${translationField}
     {
       "word": "word or phrase in original language",
 ${vocabRoma}
-      "translation": "translation into ${nat}",
+${vocabTranslationField}
       "example": "example sentence in original language"
     }
   ],
-  "tip": "one short contextual tip in ${nat}, max 2 sentences"
+  "tip": "one short contextual tip in ${nat}, max 2 sentences",
+  "everydayUseful": <boolean: true ONLY if this line is a COMMON, REUSABLE everyday/conversational phrase worth memorizing as a full card (requests, reactions, idioms, small-talk, useful dialogue); false for SHORT/trivial lines, plot-specific, fragmentary, proper-noun-heavy, or rare lines>
 }
 
 Rules:
-${roma ? '- romanization: MANDATORY. Provide it for the full transcript and for each vocab word. Never omit it.\n' : ''}${isJapanese ? '- reading: MANDATORY. Full hiragana reading of the whole transcript (every kanji converted to its kana reading; existing kana kept as-is; do not add spaces).\n' : ''}${sameAsNative ? '' : `- translation: a fluent ${nat} translation of the WHOLE transcript.\n`}- vocab: 1-4 most useful words/phrases for a learner. Skip trivial words (a, the, is, etc).
+${roma ? '- romanization: MANDATORY. Provide it for the full transcript and for each vocab word. Never omit it.\n' : ''}${isJapanese ? '- reading: MANDATORY. Full hiragana reading of the whole transcript (every kanji converted to its kana reading; existing kana kept as-is; do not add spaces).\n' : ''}${sameAsNative
+    ? `- The user is a native ${nat} speaker and the content is ALREADY in ${nat}. Do NOT translate into ANY other language (NOT Spanish, NOT Portuguese — none). For each vocab "translation", give a brief ${nat} definition/synonym. Everything (vocab, tip) stays in ${nat}.\n`
+    : `- translation: render the MEANING in natural, idiomatic ${nat} — how a native ${nat} speaker would actually say it, NOT word-for-word. Preserve tone/register (slang stays slang). This matters most for distant languages (e.g. Korean/Japanese/Chinese → ${nat}).\n`}- everydayUseful: be STRICT. true only for lines a learner would genuinely reuse in daily conversation. A longer line is fine if it's a useful dialogue to memorize. Set FALSE for lines that are too SHORT/slight to be worth a full review card — judge "too short" RELATIVE TO THIS LANGUAGE (a 1-2 word line is usually too short in English, but some languages pack a full useful phrase into very few words/characters, so judge by meaning, not raw length). Also false for story-specific lines, names/places, half-sentences, or filler.
+- vocab: 1-4 most useful words/phrases for a learner. Skip trivial words (a, the, is, etc).
 - tip: grammar, pronunciation, idiom explanation, or cultural context — written in ${nat}.
 ${isEnglish || nativeIsEnglish ? '' : '- englishText: a fluent English translation of the whole transcript.\n'}- If transcript is trivial/too short, return {"vocab":[],"tip":""}
 - Respond ONLY with raw JSON. No markdown fences, no explanation.`

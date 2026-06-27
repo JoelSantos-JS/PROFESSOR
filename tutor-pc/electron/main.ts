@@ -2,7 +2,7 @@ import { app, BrowserWindow, globalShortcut } from 'electron'
 import { WindowManager } from './windows/windowManager'
 import type { WindowName } from './windows/windowConfigs'
 import { setupIPC } from './ipc/index'
-import { warmupLocalTts } from './services/ttsService'
+import { warmupLocalTts, setKokoroProgressListener, seedLocalVoiceModelFromBundle } from './services/ttsService'
 import { SettingsService } from './services/settingsService'
 import { AuthService } from './services/authService'
 import { splashCloseDelay } from './lib/splashLifecycle'
@@ -13,20 +13,43 @@ let authenticated = false
 const settings = new SettingsService()
 const isOnboarded = () => settings.getAll().onboarded === '1'
 
+// Instância ÚNICA: impede duas cópias do app rodando juntas. Sem isso, uma instância pode ficar
+// capturando áudio "escondida" (Listen ON) enquanto a visível mostra OFF, poluindo o transcript/store.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    // Tentaram abrir outra cópia → traz as janelas atuais pra frente em vez de duplicar.
+    if (!windowManager) return
+    windowManager.showBars()
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w.isDestroyed()) continue
+      if (w.isMinimized()) w.restore()
+      w.show()
+    }
+  })
+}
+
 const MIN_SPLASH_MS = 5000   // splash carrega sozinho por este tempo ANTES de abrir as janelas
 const MAX_SPLASH_MS = 11000  // rede de segurança: fecha mesmo se a janela nunca disparar ready-to-show
 
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return   // 2ª instância: já chamou app.quit(), não sobe nada
   windowManager = new WindowManager(isDev)
-  setupIPC(windowManager, () => { authenticated = true })
+  setupIPC(windowManager, () => { authenticated = true }, () => { authenticated = false })
   const splashAt = Date.now()
   windowManager.createWindow('splash')      // aparece sozinho primeiro
+  // Progresso do modelo de voz (caso precise baixar) → barra "Baixando voz local X%" nas janelas.
+  setKokoroProgressListener(p => broadcast('tts:model-progress', p))
+  // 1º início do app instalado: instala a voz EMBUTIDA (cópia local, sem download). Em dev é no-op.
+  await seedLocalVoiceModelFromBundle()
+  warmupLocalTts()                          // carrega a voz (já presente → instantâneo)
   authenticated = await hasValidSession()   // trabalho real acontece "por baixo" do splash
   // Segura as outras janelas até o splash cumprir o tempo de carregamento.
   await delay(splashCloseDelay(splashAt, Date.now(), MIN_SPLASH_MS))
   const primary = openInitialWindow()
   closeSplashWhenReady(primary)             // só fecha quando a janela real estiver pronta (handoff suave)
-  setTimeout(() => warmupLocalTts(), 2500)
   registerShortcuts()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) openInitialWindow()

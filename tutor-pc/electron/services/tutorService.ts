@@ -28,6 +28,7 @@ export interface TutorAnalysis {
   vocab: VocabItem[]
   tip: string
   contentLanguage: string
+  everydayUseful?: boolean  // a IA marca true p/ frases úteis do dia a dia → entram na Revisão
 }
 
 export interface WordLookup {
@@ -98,7 +99,7 @@ export class TutorService {
     this.recordUsage('analysis', activeAiProvider, prompt + transcript, raw, detectedLanguage)
 
     try {
-      const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; reading?: string; englishText?: string; translation?: string }
+      const parsed = JSON.parse(raw) as { vocab?: VocabItem[]; tip?: string; romanization?: string; reading?: string; englishText?: string; translation?: string; everydayUseful?: boolean }
       return {
         transcript,
         romanization: parsed.romanization,
@@ -108,6 +109,7 @@ export class TutorService {
         vocab: parsed.vocab ?? [],
         tip: parsed.tip ?? '',
         contentLanguage: detectedLanguage,
+        everydayUseful: parsed.everydayUseful === true,
       }
     } catch {
       return { transcript, vocab: [], tip: '', contentLanguage: detectedLanguage }

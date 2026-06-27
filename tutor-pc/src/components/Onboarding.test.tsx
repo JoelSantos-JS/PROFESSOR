@@ -205,9 +205,14 @@ describe('Onboarding — conclusão persiste e chama onDone', () => {
     expect(api.set).toHaveBeenCalledWith('onboarded', '1')
   })
 
-  it('detecta o idioma do sistema como padrão (jsdom = en-US → English)', () => {
-    render(<Onboarding onDone={vi.fn()} />)
-    expect(screen.getByLabelText(/Seu idioma/i)).toHaveValue('en')
+  it('detecta o idioma do sistema como padrão (locale en-US → English)', () => {
+    Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true })
+    try {
+      render(<Onboarding onDone={vi.fn()} />)
+      expect(screen.getByLabelText(/Seu idioma/i)).toHaveValue('en')
+    } finally {
+      Object.defineProperty(navigator, 'language', { value: 'pt-BR', configurable: true })  // restaura o default dos testes
+    }
   })
 
   it('navega para trás preservando idioma e nível', async () => {

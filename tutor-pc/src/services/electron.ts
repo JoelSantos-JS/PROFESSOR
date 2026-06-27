@@ -12,6 +12,7 @@ export const windowAPI = {
   pendingReviewLang: (): Promise<string | null> => window.api.window.pendingReviewLang(),
   onboardingComplete: () => window.api.window.onboardingComplete(),
   authComplete: () => window.api.window.authComplete(),
+  logout: () => window.api.window.logout(),
 }
 
 export const settingsAPI = {
@@ -42,7 +43,7 @@ export const authAPI = {
 
 export const audioAPI = {
   getSources: () => window.api.audio.getSources(),
-  transcribe: (buffer: ArrayBuffer, hint?: string) => window.api.audio.transcribe(buffer, hint),
+  transcribe: (buffer: ArrayBuffer, hint?: string, langOverride?: string, allowRetry?: boolean) => window.api.audio.transcribe(buffer, hint, langOverride, allowRetry),
 }
 
 export const tutorAPI = {
@@ -63,6 +64,10 @@ export const pronunciationAPI = {
     window.api.pronunciation.native(word, lang),
   audio: (url: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> =>
     window.api.pronunciation.audio(url),
+}
+
+export const syncAPI = {
+  backup: () => window.api.sync.backup(),
 }
 
 export const forvoAPI = {

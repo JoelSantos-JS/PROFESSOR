@@ -4,6 +4,7 @@ import TitleBar from '../components/TitleBar'
 import DiffView from '../components/DiffView'
 import PronunciationVariants from '../components/PronunciationVariants'
 import { audioAPI, onChannel, ttsAPI, listeningAPI, sessionAPI, tutorAPI, storeAPI, settingsAPI } from '../services/electron'
+import { openMicStream } from '../lib/audioDevices'
 import { diffWords, scoreFromDiff, segmentText, wordMatches } from '../lib/text'
 import { playbackProgress, tokenAtProgress, findWordCue } from '../lib/tts'
 import { capAudioMemory } from '../lib/audioCache'
@@ -150,9 +151,11 @@ export default function TutorBoard() {
       const entry: Entry = { ...analysis, id: crypto.randomUUID() }
       // Keep entries under the in-memory audio budget (drops oldest clips)
       setEntries(prev => capAudioMemory([...prev, entry], undefined, e => e.originalAudioUrl))
-      // Persist the whole SENTENCE as a spaced-repetition card (not single words)
+      // Persist a frase inteira como card de revisão (SRS) — APENAS quando a IA marca que é uma
+      // frase ÚTIL do dia a dia (everydayUseful). Antes salvava toda frase; agora cura: só as úteis
+      // entram no deck de Revisão.
       const translation = analysis.translation ?? analysis.englishText ?? ''
-      if (analysis.transcript.trim() && translation && isReviewableSentence(analysis.transcript)) {
+      if (analysis.everydayUseful && analysis.transcript.trim() && translation && isReviewableSentence(analysis.transcript)) {
         storeAPI.addVocab([{
           word: analysis.transcript,
           romanization: analysis.romanization,
@@ -408,7 +411,8 @@ export function EntryCard({ entry, index, speed = 1, nativeLang = 'pt' }: { entr
     listeningAPI.pause()
     pausedByMeRef.current = true
     try {
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      const micId = (await settingsAPI.getAll().catch(() => null))?.audioInputDevice
+      const micStream = await openMicStream(micId)
       streamRef.current = micStream
       const mimeType  = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
       const recorder  = new MediaRecorder(micStream, { mimeType })

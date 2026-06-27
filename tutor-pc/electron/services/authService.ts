@@ -7,10 +7,28 @@ import { SecureSessionStore } from './secureSessionStore.js'
 
 const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000
 const REFRESH_EARLY_MS = 60 * 1000
-const OAUTH_TIMEOUT_MS = 3 * 60 * 1000
+const OAUTH_TIMEOUT_MS = 10 * 60 * 1000   // 1º login com Google (consentimento/app não verificado) é lento
 const OAUTH_CALLBACK_HOST = '127.0.0.1'
 const OAUTH_CALLBACK_PORT = 17654
 const OAUTH_CALLBACK_PATH = '/auth/callback'
+
+/** Página branded mostrada no navegador ao voltar do Google (em vez de texto cru / erro do Chrome). */
+function oauthResultPage(ok: boolean, heading: string, body: string): string {
+  const accent = ok ? '#7fe3cf' : '#ffb3ad'
+  return `<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>Soaken</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><style>
+html,body{height:100%;margin:0}
+body{display:grid;place-items:center;font-family:system-ui,'Segoe UI',sans-serif;background:linear-gradient(180deg,#1c3a34,#142c28);color:#EAF0EA}
+.card{text-align:center;padding:40px 32px;max-width:380px}
+.dot{width:56px;height:56px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;background:${accent}22;color:${accent};font-size:28px;font-weight:700}
+h1{font-size:20px;margin:0 0 8px}
+p{margin:0;color:#9fb3ad;font-size:14px;line-height:1.55}
+.brand{margin-top:22px;font-size:12px;letter-spacing:.16em;color:#5f7d75;text-transform:uppercase}
+</style></head><body><div class="card">
+<div class="dot">${ok ? '&#10003;' : '!'}</div>
+<h1>${heading}</h1><p>${body}</p><div class="brand">Soaken</div>
+</div>${ok ? '<script>setTimeout(function(){try{window.close()}catch(e){}},2500)</script>' : ''}</body></html>`
+}
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -191,20 +209,22 @@ export class AuthService {
 
         const providerError = url.searchParams.get('error_description') ?? url.searchParams.get('error')
         if (providerError) {
-          res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Authentication failed. You can close this tab.')
+          res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' })
+            .end(oauthResultPage(false, 'Falha no login', 'Algo deu errado com o Google. Volte ao Soaken e tente de novo.'))
           finish(() => reject(new Error(compactAuthError(providerError))))
           return
         }
 
         const code = url.searchParams.get('code')
         if (!code) {
-          res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Missing auth code.')
+          res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' })
+            .end(oauthResultPage(false, 'Falha no login', 'O Google não retornou o código. Volte ao Soaken e tente de novo.'))
           finish(() => reject(new Error('Google nao retornou o codigo de autenticacao.')))
           return
         }
 
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-        res.end('<!doctype html><title>Soaken</title><body style="font-family:sans-serif;padding:24px">Login concluido. Voce pode fechar esta aba.</body>')
+        res.end(oauthResultPage(true, 'Conectado com o Google!', 'Pronto — você já está logado no Soaken. Pode fechar esta aba e voltar para o app.'))
         finish(() => resolve(code))
       })
 

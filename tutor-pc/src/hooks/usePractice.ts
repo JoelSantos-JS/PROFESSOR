@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
-import { audioAPI, listeningAPI } from '../services/electron'
+import { audioAPI, listeningAPI, settingsAPI } from '../services/electron'
+import { openMicStream } from '../lib/audioDevices'
 
 export type PracticeState = 'idle' | 'countdown' | 'recording' | 'transcribing' | 'result'
 
@@ -63,7 +64,8 @@ export function usePractice() {
   const begin = useCallback(async (maxMs: number) => {
     if (cancelledRef.current) { resumeListener(); return }
     try {
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      const micId = (await settingsAPI.getAll().catch(() => null))?.audioInputDevice
+      const micStream = await openMicStream(micId)
       streamRef.current = micStream
       if (cancelledRef.current) {           // cancelled while awaiting mic
         micStream.getTracks().forEach(t => t.stop())

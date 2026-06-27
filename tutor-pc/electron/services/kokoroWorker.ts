@@ -33,7 +33,11 @@ async function getTts(cacheDir: string): Promise<KokoroInstance> {
       return await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
         dtype: KOKORO_DTYPE,
         device: KOKORO_DEVICE,
-      }) as KokoroInstance
+        // Reporta o progresso do download (1ª vez) → barra "Baixando voz local X%" no app.
+        progress_callback: (p: { file?: string; name?: string; loaded?: number; total?: number; status?: string }) => {
+          parentPort?.postMessage({ type: 'progress', file: p.file ?? p.name, loaded: p.loaded, total: p.total, status: p.status })
+        },
+      } as unknown as Parameters<typeof KokoroTTS.from_pretrained>[1]) as KokoroInstance
     })()
   }
   return ttsPromise

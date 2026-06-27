@@ -6,8 +6,10 @@ describe('buildSystemPrompt — sentence translation field', () => {
     expect(buildSystemPrompt('en')).toContain('"translation"')   // en content, nativo pt
     expect(buildSystemPrompt('ko')).toContain('"translation"')
   })
-  it('default native: Brazilian Portuguese translation of the whole transcript', () => {
-    expect(buildSystemPrompt('en').toLowerCase()).toContain('brazilian portuguese translation of the whole transcript')
+  it('default native: tradução natural/idiomática para português brasileiro', () => {
+    const p = buildSystemPrompt('en').toLowerCase()
+    expect(p).toContain('natural, idiomatic brazilian portuguese')
+    expect(p).toContain('not word-for-word')
   })
   it('OMITE a tradução da FRASE quando conteúdo == idioma do nativo (não gasta token à toa)', () => {
     // inglês → inglês: sem tradução da frase nem englishText (o "translation" do vocab continua)
@@ -18,6 +20,24 @@ describe('buildSystemPrompt — sentence translation field', () => {
     // português → português (e aceita region code)
     expect(buildSystemPrompt('pt-BR', 'pt')).not.toContain('natural translation of the whole sentence')
     expect(buildSystemPrompt('pt', 'pt-BR')).not.toContain('natural translation of the whole sentence')
+  })
+
+  it('pede o campo everydayUseful (curadoria de frases úteis p/ a Revisão)', () => {
+    const p = buildSystemPrompt('en', 'pt')
+    expect(p).toContain('"everydayUseful"')
+    expect(p).toMatch(/everydayUseful: be STRICT/i)
+    // descarta frases curtas, mas julgando "curto" RELATIVO ao idioma (não contagem fixa)
+    expect(p).toMatch(/too SHORT/i)
+    expect(p).toMatch(/RELATIVE TO THIS LANGUAGE/i)
+  })
+
+  it('quando conteúdo == nativo, PROÍBE traduzir p/ outro idioma (mata a alucinação de espanhol)', () => {
+    const enEn = buildSystemPrompt('en', 'en')
+    // a regra explícita de não-traduzir aparece, citando o idioma do usuário (English)
+    expect(enEn).toMatch(/Do NOT translate into ANY other language/i)
+    expect(enEn).toContain('NOT Spanish')
+    // o "translation" do vocab vira DEFINIÇÃO no mesmo idioma, não tradução
+    expect(enEn).toContain('definition/synonym of the word — SAME language')
   })
 })
 

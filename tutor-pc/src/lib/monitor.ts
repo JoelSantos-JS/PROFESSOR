@@ -2,12 +2,23 @@
 // completed sentence pauses the player and prompts the user to repeat it.
 // Kept side-effect-free so the whole decision flow is unit-testable.
 
+import type { WordCue } from '../types'
+
 export type MonitorPhase = 'watching' | 'practicing'
+
+// Cada frase candidata ao treino carrega o SEU áudio/cues/idioma (vinculados por instância),
+// pra não usar o "último clipe" global. É o que o TutorBoard faz e o que conserta o bug.
+export interface PracticeItem {
+  text: string
+  audioUrl?: string
+  cues?: WordCue[]
+  lang: string
+}
 
 export interface MonitorState {
   phase: MonitorPhase
-  current: string | null   // sentence being practiced
-  queue: string[]          // sentences captured while practicing
+  current: PracticeItem | null   // frase (com áudio) sendo praticada
+  queue: PracticeItem[]          // frases (com áudio) capturadas enquanto pratica
 }
 
 export type MonitorAction =
@@ -35,24 +46,26 @@ function tooLongToPractice(text: string): boolean {
  */
 export function onSentence(
   state: MonitorState,
-  sentence: string,
+  item: PracticeItem,
   autoMode: boolean,
 ): { state: MonitorState; action: MonitorAction } {
-  const text = sentence.trim()
+  const text = item.text.trim()
   if (!autoMode || !text) return { state, action: 'none' }
   // Skip run-ons / background chatter — too long to be a useful practice line.
   if (tooLongToPractice(text)) return { state, action: 'none' }
 
+  const entry: PracticeItem = { ...item, text }
+
   if (state.phase === 'watching') {
     return {
-      state: { phase: 'practicing', current: text, queue: [] },
+      state: { phase: 'practicing', current: entry, queue: [] },
       action: 'pause-and-practice',
     }
   }
 
-  // already practicing → queue
+  // already practicing → queue (mantém o áudio/cues da frase junto)
   return {
-    state: { ...state, queue: [...state.queue, text] },
+    state: { ...state, queue: [...state.queue, entry] },
     action: 'none',
   }
 }

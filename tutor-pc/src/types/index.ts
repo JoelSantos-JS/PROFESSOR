@@ -16,6 +16,7 @@ export interface TutorAnalysis {
   vocab: VocabItem[]
   tip: string
   contentLanguage: string
+  everydayUseful?: boolean    // IA marca true p/ frases úteis do dia a dia → entram na Revisão (SRS)
   originalAudioUrl?: string  // captured clip of the original audio (in-memory data URL)
   originalCues?: WordCue[]   // per-word timings of the original audio (karaoke sync)
   analysisError?: string     // set when the AI analysis failed (shown in the card)
@@ -194,6 +195,7 @@ export interface AppSettings {
   nativeLanguage: string
   contentLanguage: string
   audioInputDevice: string
+  transcriptionSource: string
   activeAiProvider: ProviderId
   activeTranscriptionProvider: ProviderId
   activeTtsProvider: TtsProviderId
@@ -230,6 +232,7 @@ export interface IpcAPI {
     pendingReviewLang: () => Promise<string | null>
     onboardingComplete: () => void
     authComplete: () => void
+    logout: () => void
   }
   settings: {
     getAll: () => Promise<AppSettings>
@@ -253,7 +256,7 @@ export interface IpcAPI {
   }
   audio: {
     getSources: () => Promise<AudioSource[]>
-    transcribe: (buffer: ArrayBuffer, hint?: string) => Promise<TranscribeResult>
+    transcribe: (buffer: ArrayBuffer, hint?: string, langOverride?: string, allowRetry?: boolean) => Promise<TranscribeResult>
   }
   tutor: {
     analyze: (transcript: string, language: string, audioUrl?: string, cues?: WordCue[]) => Promise<{ ok: boolean; error?: string }>
@@ -269,6 +272,9 @@ export interface IpcAPI {
   pronunciation: {
     native: (word: string, lang: string) => Promise<{ ok: boolean; items: NativePronunciation[]; error?: string }>
     audio: (url: string) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>
+  }
+  sync: {
+    backup: () => void
   }
   forvo: {
     setKey: (key: string) => Promise<{ ok: boolean }>

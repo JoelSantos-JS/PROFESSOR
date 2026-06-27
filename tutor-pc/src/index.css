@@ -34,7 +34,7 @@
   --border-strong: #BCD0CD;
   --ink: #1F3330;
   --ink-2: #46615C;
-  --muted: #7A938E;
+  --muted: #3F5A53;
   --brand: #1F8A8A;
   --brand-ink: #16706F;
   --brand-soft: #D4EAE8;
@@ -153,7 +153,7 @@ button {
 }
 
 .label-eyebrow {
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .14em;

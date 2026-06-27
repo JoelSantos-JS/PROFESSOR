@@ -11,6 +11,11 @@ files:
   - dist-electron/**
   - package.json
 
+# Modelo da voz local (Kokoro) embutido no instalador → app já abre com a voz, sem download.
+extraResources:
+  - from: kokoro-bundle/models
+    to: models
+
 win:
   icon: resources/icon.ico
   target:

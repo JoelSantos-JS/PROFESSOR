@@ -16,10 +16,15 @@ export const HIGH_COMPRESSION = 2.4          // Whisper's repetition/hallucinati
 // audio that Whisper forces into garbled words, e.g. "Thank you deix toughest").
 export const BORDERLINE_NO_SPEECH = 0.4
 export const BORDERLINE_LOGPROB = -0.55
-// Transcrições MUITO curtas (≤2 palavras) sobre transiente/ruído (batida de mesa → "E aí") são o
-// caso clássico de alucinação. Aí basta um sinal MODERADO de "não-fala" pra reprovar.
-export const SHORT_TEXT_MAX_WORDS = 2
+// Transcrições curtas (≤3 palavras) sobre transiente/ruído/música (batida de mesa → "E aí";
+// jingle → "WATCH TV 2021") são o caso clássico de alucinação. Aí basta um sinal MODERADO de
+// "não-fala" pra reprovar.
+export const SHORT_TEXT_MAX_WORDS = 3
 export const SHORT_TEXT_NO_SPEECH = 0.33
+// Frase curta contendo um ANO solto ("TV 2021", "WATCH TV 2021", "2021") é padrão típico de
+// alucinação de música/créditos — quase nunca aparece como fala curta real.
+const YEAR_RE = /\b(?:19|20)\d{2}\b/
+export const SHORT_YEAR_NO_SPEECH = 0.2
 
 /** True when the segments look like music / ambient / forced-garbage rather than speech. */
 export function isNonSpeech(segments: WhisperSegment[]): boolean {
@@ -64,6 +69,24 @@ const SOUND_MODIFIERS = new Set([
   'slow', 'fast', 'background', 'soft', 'eerie', 'ominous', 'cheerful', 'somber', 'light',
 ])
 
+// "Atores" típicos das stage directions do Whisper (sujeito da anotação de som).
+const STAGE_SUBJECTS = new Set([
+  'he', 'she', 'it', 'they', 'we', 'i', 'you',
+  'music', 'song', 'phone', 'door', 'crowd', 'audience', 'people', 'everyone', 'everybody',
+  'man', 'woman', 'baby', 'child', 'dog', 'cat', 'bird', 'birds', 'engine', 'car',
+  'wind', 'rain', 'thunder', 'bell', 'bells', 'alarm', 'siren', 'clock',
+])
+
+// Verbos de som/ação que o Whisper usa em stage directions ("music PLAYS", "phone RINGS").
+const SOUND_VERBS = new Set([
+  'plays', 'playing', 'rings', 'ringing', 'slams', 'slamming', 'creaks', 'creaking',
+  'barks', 'barking', 'knocks', 'knocking', 'honks', 'beeps', 'beeping', 'buzzes', 'buzzing',
+  'chimes', 'chirps', 'chirping', 'roars', 'roaring', 'ticks', 'ticking', 'rumbles',
+  'sighs', 'sighing', 'laughs', 'laughing', 'giggles', 'chuckles', 'coughs', 'sneezes',
+  'screams', 'screaming', 'cries', 'crying', 'sobs', 'gasps', 'groans', 'mutters', 'whispers',
+  'cheers', 'cheering', 'applauds', 'claps', 'clapping', 'hums', 'humming', 'sings', 'singing',
+])
+
 /** Normalize for comparison: lowercase, trim, strip wrapping brackets/parens/notes + punctuation. */
 function normalizePhrase(text: string): string {
   return text.trim().toLowerCase()
@@ -80,6 +103,16 @@ export function isHallucinationPhrase(text: string): boolean {
   // not dialogue (e.g. "[Music]", "(door creaks)", "♪ upbeat music ♪").
   if (/^[[(♪].*[\])♪]$/.test(raw)) return true
 
+  // Stage directions / SFX que o Whisper escreve em CAIXA ALTA p/ não-fala ("MUSIC PLAYS",
+  // "HE SIGHS", "DOOR SLAMS"). Fala real vem em caixa normal → caixa alta multi-palavra curta
+  // é anotação, não diálogo. (CJK não tem caixa, então não é afetado.)
+  const rawWords = raw.split(/\s+/).filter(Boolean)
+  const rawLetters = raw.replace(/[^A-Za-z]/g, '')
+  if (rawWords.length >= 2 && rawWords.length <= 5 && rawLetters.length >= 4
+      && raw === raw.toUpperCase() && raw !== raw.toLowerCase()) {
+    return true
+  }
+
   const t = normalizePhrase(raw)
   if (!t) return true
   if (HALLUCINATIONS.has(t)) return true
@@ -89,6 +122,8 @@ export function isHallucinationPhrase(text: string): boolean {
   // Standalone sound word ("Music"), or "<modifier> <sound>" ("upbeat music").
   if (words.length === 1 && SOUND_WORDS.has(last)) return true
   if (words.length === 2 && SOUND_WORDS.has(last) && SOUND_MODIFIERS.has(words[0])) return true
+  // "[sujeito] [som]" stage direction de 2 palavras: "music plays", "he sighs", "phone rings".
+  if (words.length === 2 && STAGE_SUBJECTS.has(words[0]) && (SOUND_WORDS.has(last) || SOUND_VERBS.has(last))) return true
 
   return false
 }
@@ -103,9 +138,14 @@ function avgNoSpeechProb(segments: WhisperSegment[]): number {
 export function shouldRejectTranscript(text: string, segments: WhisperSegment[]): boolean {
   if (isHallucinationPhrase(text)) return true
   if (isNonSpeech(segments)) return true
-  // Texto muito curto + qualquer sinal moderado de "não-fala" → provável alucinação sobre ruído.
   const words = text.trim().split(/\s+/).filter(Boolean)
-  if (words.length > 0 && words.length <= SHORT_TEXT_MAX_WORDS && avgNoSpeechProb(segments) >= SHORT_TEXT_NO_SPEECH) {
+  const ns = avgNoSpeechProb(segments)
+  // Texto curto + sinal moderado de "não-fala" → provável alucinação sobre ruído/música.
+  if (words.length > 0 && words.length <= SHORT_TEXT_MAX_WORDS && ns >= SHORT_TEXT_NO_SPEECH) {
+    return true
+  }
+  // Curto + ano solto ("WATCH TV 2021") → alucinação de música/créditos (gate de não-fala bem baixo).
+  if (words.length > 0 && words.length <= SHORT_TEXT_MAX_WORDS && YEAR_RE.test(text) && ns >= SHORT_YEAR_NO_SPEECH) {
     return true
   }
   return false

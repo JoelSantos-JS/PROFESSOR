@@ -13,5 +13,6 @@ export default defineConfig({
     // Pure-logic tests run in node (no jsdom dependency required).
     environment: 'node',
     testTimeout: 20_000,  // tolerant of slow CI / low-disk machines
+    setupFiles: ['./src/test-setup.ts'],  // locale determinístico (pt-BR) p/ o default de idioma
   },
 })

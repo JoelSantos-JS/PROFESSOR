@@ -5,6 +5,7 @@ import { advanceStreak } from '../lib/streak.js'
 import { languageStats, type LangStat } from '../lib/languageStats.js'
 import { canonicalLang } from '../lib/langNormalize.js'
 import { applyMistake } from '../lib/mistakeTracking.js'
+import { activeUserId } from './secureSessionStore.js'
 
 // ── Persisted shapes ──────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ export interface TokenUsageSummary {
   recent: TokenUsageRecord[]
 }
 
-interface StoreData {
+export interface StoreData {
   sessions: SessionRecord[]
   vocab: VocabCard[]
   mistakes: Record<string, MistakeRecord>  // keyed by `${lang}:${word}`
@@ -88,10 +89,14 @@ interface StoreData {
 const EMPTY: StoreData = { sessions: [], vocab: [], mistakes: {}, known: {}, tokenUsage: [], streak: 0, lastActiveDate: '' }
 
 export class StoreService {
-  private filePath: string
-
-  constructor() {
-    this.filePath = path.join(app.getPath('userData'), 'store.json')
+  // Caminho do store ESCOPADO pelo usuário logado → cada conta tem seus dados (isolamento).
+  // Sem login (não deveria ocorrer pós-auth) cai no arquivo legado da máquina.
+  private get filePath(): string {
+    const uid = activeUserId()
+    const base = app.getPath('userData')
+    return uid
+      ? path.join(base, 'users', uid.replace(/[^a-zA-Z0-9_-]/g, '_'), 'store.json')
+      : path.join(base, 'store.json')
   }
 
   private load(): StoreData {
@@ -248,6 +253,35 @@ export class StoreService {
   /** Per-language deck stats (for the language separator UI). */
   getLanguages(now = Date.now()): LangStat[] {
     return languageStats(this.load().vocab, now)
+  }
+
+  // ── Backup/sync na nuvem (Supabase) ───────────────────────────────────────────
+  // Sobe só os DADOS DE APRENDIZADO. Fora: tokenUsage (telemetria local de custo). O store já
+  // não guarda áudio (fica em memória no renderer), então o payload é leve.
+  exportForBackup(): Omit<StoreData, 'tokenUsage'> {
+    const { tokenUsage: _omit, ...rest } = this.load()
+    return rest
+  }
+
+  /** Aplica um backup (PC novo / restore). Mantém a telemetria local (tokenUsage). */
+  importFromBackup(payload: Partial<Omit<StoreData, 'tokenUsage'>>): void {
+    const local = this.load()
+    this.save({
+      sessions:       payload.sessions ?? local.sessions,
+      vocab:          payload.vocab ?? local.vocab,
+      mistakes:       payload.mistakes ?? local.mistakes,
+      known:          payload.known ?? local.known,
+      streak:         payload.streak ?? local.streak,
+      lastActiveDate: payload.lastActiveDate ?? local.lastActiveDate,
+      tokenUsage:     local.tokenUsage,   // não vem do backup (é local)
+    })
+  }
+
+  /** Tem QUALQUER dado de aprendizado? Usado p/ decidir o restore (só restaura se local vazio). */
+  hasLearningData(): boolean {
+    const d = this.load()
+    return d.sessions.length > 0 || d.vocab.length > 0
+      || Object.keys(d.mistakes).length > 0 || Object.keys(d.known).length > 0
   }
 
   // ── Palavras conhecidas (rastreio de progresso / % compreensão) ───────────────

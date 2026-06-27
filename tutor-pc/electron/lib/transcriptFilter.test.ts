@@ -95,11 +95,25 @@ describe('isHallucinationPhrase', () => {
     expect(isHallucinationPhrase('♪ music ♪')).toBe(true)
   })
 
+  it('flags stage directions "[sujeito] [som]" (MUSIC PLAYS / HE SIGHS / phone rings)', () => {
+    // caixa alta (como o Whisper costuma escrever)
+    expect(isHallucinationPhrase('MUSIC PLAYS')).toBe(true)
+    expect(isHallucinationPhrase('HE SIGHS')).toBe(true)
+    expect(isHallucinationPhrase('DOOR SLAMS')).toBe(true)
+    expect(isHallucinationPhrase('PHONE RINGS')).toBe(true)
+    // caixa normal
+    expect(isHallucinationPhrase('music plays')).toBe(true)
+    expect(isHallucinationPhrase('he sighs')).toBe(true)
+    expect(isHallucinationPhrase('she laughs')).toBe(true)
+  })
+
   it('does NOT flag real short dialogue', () => {
     expect(isHallucinationPhrase('Thank you.')).toBe(false)  // real in dialogue
     expect(isHallucinationPhrase('I')).toBe(false)
     expect(isHallucinationPhrase('Yes.')).toBe(false)
     expect(isHallucinationPhrase('Sherlock Holmes')).toBe(false)
+    expect(isHallucinationPhrase('good music')).toBe(false)   // não é stage direction (sujeito ≠ ator de som)
+    expect(isHallucinationPhrase('He plays guitar')).toBe(false)  // 3 palavras, fala real
   })
 
   it('does NOT flag a sound word inside a real sentence', () => {
@@ -147,8 +161,26 @@ describe('shouldRejectTranscript', () => {
     expect(shouldRejectTranscript('Olá mundo', [{ no_speech_prob: 0.2, avg_logprob: -0.3 }])).toBe(false)
   })
 
-  it('NÃO aplica a regra de texto-curto em frases longas (>2 palavras)', () => {
+  it('NÃO aplica a regra de texto-curto em frases longas (>3 palavras)', () => {
     // 5 palavras com no_speech moderado não cai na regra de curto (segue só os limiares normais)
     expect(shouldRejectTranscript('Vou ali e já volto', [{ no_speech_prob: 0.35, avg_logprob: -0.3 }])).toBe(false)
+  })
+
+  // Alucinação de música/jingle (site com som de fundo → "WATCH TV 2021", "TV 2021").
+  it('rejeita alucinação de música "WATCH TV 2021" (≤3 palavras + no_speech moderado)', () => {
+    expect(shouldRejectTranscript('WATCH TV 2021', [{ no_speech_prob: 0.35, avg_logprob: -0.4 }])).toBe(true)
+    expect(shouldRejectTranscript('F-WATCH TV 2021', [{ no_speech_prob: 0.34, avg_logprob: -0.4 }])).toBe(true)
+  })
+
+  it('rejeita frase curta com ANO solto já com sinal fraco de não-fala ("TV 2021")', () => {
+    expect(shouldRejectTranscript('TV 2021', [{ no_speech_prob: 0.22, avg_logprob: -0.3 }])).toBe(true)
+  })
+
+  it('MANTÉM fala real curta de 3 palavras com boa confiança', () => {
+    expect(shouldRejectTranscript('Come here now', [{ no_speech_prob: 0.08, avg_logprob: -0.2 }])).toBe(false)
+  })
+
+  it('MANTÉM frase real com ano quando é claramente fala (>3 palavras, no_speech baixo)', () => {
+    expect(shouldRejectTranscript('I was born in 1995', [{ no_speech_prob: 0.05, avg_logprob: -0.2 }])).toBe(false)
   })
 })
