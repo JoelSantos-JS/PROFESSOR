@@ -25,8 +25,8 @@ export function pitchComparisonScores(opts: {
   user: number[]
   original?: number[]
   tts?: number[]
-}, uiLang: 'pt' | 'en' = 'pt'): PitchScore[] {
-  const you = uiLang === 'en' ? 'You' : 'Você'
+}, uiLang: string = 'pt'): PitchScore[] {
+  const you = uiLang === 'pt' ? 'Você' : 'You'
   const scores: PitchScore[] = []
   const userOriginal = maybeScore('user-original', `${you} x Original`, opts.user, opts.original ?? [])
   const userTts = maybeScore('user-tts', `${you} x TTS`, opts.user, opts.tts ?? [])

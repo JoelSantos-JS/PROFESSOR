@@ -44,7 +44,11 @@ export default function Review() {
       .catch(() => setLoading(false))
   }, [])
 
-  useEffect(() => { settingsAPI.getAll().then(s => setUiLang(appLanguage(s.appLanguage))).catch(() => {}) }, [])
+  useEffect(() => {
+    const load = () => settingsAPI.getAll().then(s => setUiLang(appLanguage(s.appLanguage))).catch(() => {})
+    load()
+    return onChannel('settings:changed', load)   // idioma muda na hora (sem reiniciar)
+  }, [])
 
   useEffect(() => {
     Promise.all([storeAPI.languages(), windowAPI.pendingReviewLang()]).then(([langs, pending]) => {

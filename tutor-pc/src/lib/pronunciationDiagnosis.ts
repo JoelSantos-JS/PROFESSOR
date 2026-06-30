@@ -75,7 +75,8 @@ const FALLBACK_TIP: Record<UiLang, string> = {
 }
 
 /** 1–3 dicas: específica do idioma + reforço com as palavras erradas. */
-export function pronunciationTips(lang: string, weakWords: string[], uiLang: UiLang = 'pt'): string[] {
+export function pronunciationTips(lang: string, weakWords: string[], uiLangRaw: string = 'pt'): string[] {
+  const uiLang: UiLang = uiLangRaw === 'pt' ? 'pt' : 'en'   // ko/zh caem no inglês
   const base = LANG_TIPS[uiLang][baseLang(lang)] ?? [FALLBACK_TIP[uiLang]]
   const tips = [...base]
   if (weakWords.length) {
@@ -91,8 +92,8 @@ const SCORE_LABELS: Record<UiLang, [string, string, string, string]> = {
 }
 
 /** Rótulo do nível do score (para o card de resultado). */
-export function scoreLabel(score: number, uiLang: UiLang = 'pt'): string {
-  const [a, b, c, d] = SCORE_LABELS[uiLang]
+export function scoreLabel(score: number, uiLangRaw: string = 'pt'): string {
+  const [a, b, c, d] = SCORE_LABELS[uiLangRaw === 'pt' ? 'pt' : 'en']
   if (score >= 85) return a
   if (score >= 70) return b
   if (score >= 50) return c

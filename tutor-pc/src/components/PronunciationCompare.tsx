@@ -117,7 +117,7 @@ export default function PronunciationCompare({ attempt }: { attempt: SessionAtte
     <div className="mt-1.5">
       <button
         onClick={toggle}
-        className="flex items-center gap-1 text-[11px] text-primary/80 hover:text-primary transition-colors"
+        className="flex items-center gap-1 text-[11px] text-[#7fe3cf]/90 hover:text-[#7fe3cf] transition-colors"
       >
         <Activity size={12} /> {open ? t('hideComparison') : t('compareIntonation')}
       </button>
@@ -149,26 +149,26 @@ export default function PronunciationCompare({ attempt }: { attempt: SessionAtte
                       <path key={i} d={contourPath(s.contour, W, H)} fill="none" stroke={s.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
                     ))}
                   </svg>
-                  <p className="text-[10px] text-muted/50 mb-1.5 leading-snug">{t('intonationLineHint')}</p>
+                  <p className="text-[10px] text-white/45 mb-1.5 leading-snug">{t('intonationLineHint')}</p>
                   {ttsState === 'loading' && (
-                    <p className="flex items-center gap-1 text-[10px] text-muted/50 mb-1.5">
+                    <p className="flex items-center gap-1 text-[10px] text-white/45 mb-1.5">
                       <Loader2 size={10} className="animate-spin" /> {t('generatingTtsBg')}
                     </p>
                   )}
                   {ttsState === 'failed' && (
-                    <p className="text-[10px] text-muted/45 mb-1.5">{t('ttsUnavailableNow')}</p>
+                    <p className="text-[10px] text-white/40 mb-1.5">{t('ttsUnavailableNow')}</p>
                   )}
                 </>
               ) : (
                 <div className="flex items-center gap-2 mb-1.5">
-                  <p className="text-[11px] text-muted/60">
+                  <p className="text-[11px] text-white/60">
                     {reason === 'no-pitch'
                       ? t('noPitchDetected')
                       : reason === 'decode'
                         ? t('cantReadAudio')
                         : t('chartUnavailable')}
                   </p>
-                  <button onClick={analyze} className="text-[11px] text-primary/80 hover:text-primary shrink-0">{t('tryAgain')}</button>
+                  <button onClick={analyze} className="text-[11px] text-[#7fe3cf]/90 hover:text-[#7fe3cf] shrink-0">{t('tryAgain')}</button>
                 </div>
               )}
 
@@ -207,7 +207,7 @@ function ScorePill({ score, label }: { score: number; label: string }) {
         'text-[11px] font-bold',
         score >= 80 ? 'text-success' : score >= 55 ? 'text-warning' : 'text-danger',
       ].join(' ')}>{score}%</span>
-      <span className="text-[10px] text-muted/70">{label}</span>
+      <span className="text-[10px] text-white/70">{label}</span>
     </span>
   )
 }
@@ -224,7 +224,7 @@ function PlayChip({ label, color, onClick }: { label: string; color: string; onC
       className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-surface border border-white/[0.06] hover:bg-surface-2 transition-colors"
     >
       <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-      <Volume2 size={11} className="text-muted" />
+      <Volume2 size={11} className="text-white/50" />
       {label}
     </button>
   )

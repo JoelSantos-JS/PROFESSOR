@@ -8,6 +8,12 @@ import {
   type ProfessorMessage, type ProfessorTurn,
 } from '../lib/professorPrompt.js'
 import { providerFetch } from '../lib/providerFetch.js'
+import { app } from 'electron'
+
+/** Idioma nativo (das explicações): o escolhido, ou o LOCALE do PC quando vazio (en/ko→…, pt→pt). */
+function resolveNative(nativeLanguage: string): string {
+  return (nativeLanguage && nativeLanguage.trim()) ? nativeLanguage : (app.getLocale() || 'en')
+}
 
 export { buildSystemPrompt } from '../lib/tutorPrompt.js'
 
@@ -94,7 +100,7 @@ export class TutorService {
       throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
     }
 
-    const prompt = buildSystemPrompt(detectedLanguage, nativeLanguage)
+    const prompt = buildSystemPrompt(detectedLanguage, resolveNative(nativeLanguage))
     const raw = await this.dispatch(activeAiProvider, apiKey, transcript, prompt)
     this.recordUsage('analysis', activeAiProvider, prompt + transcript, raw, detectedLanguage)
 
@@ -122,7 +128,7 @@ export class TutorService {
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const vprompt = buildVariationsPrompt(sentence, lang, nativeLanguage)
+    const vprompt = buildVariationsPrompt(sentence, lang, resolveNative(nativeLanguage))
     const raw = await this.dispatch(activeAiProvider, apiKey, sentence, vprompt)
     this.recordUsage('variations', activeAiProvider, vprompt + sentence, raw, lang)
     try {
@@ -140,7 +146,7 @@ export class TutorService {
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const prompt = buildLookupPrompt(word, context, lang, nativeLanguage)
+    const prompt = buildLookupPrompt(word, context, lang, resolveNative(nativeLanguage))
     const raw = await this.dispatch(activeAiProvider, apiKey, word, prompt)
     this.recordUsage('lookup', activeAiProvider, prompt + word, raw, lang)
 
@@ -165,7 +171,7 @@ export class TutorService {
     const apiKey = this.credentials.get(activeAiProvider)
     if (!apiKey) throw new Error(`Nenhuma chave configurada para "${activeAiProvider}".`)
 
-    const dprompt = buildDecomposePrompt(char, lang, nativeLanguage)
+    const dprompt = buildDecomposePrompt(char, lang, resolveNative(nativeLanguage))
     const raw = await this.dispatch(activeAiProvider, apiKey, char, dprompt)
     this.recordUsage('decompose', activeAiProvider, dprompt + char, raw, lang)
     try {

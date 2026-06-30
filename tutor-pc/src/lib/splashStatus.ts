@@ -1,23 +1,22 @@
 // Textos do splash de abertura, por idioma (segue o idioma do app/locale do PC). Puro/testável.
-import type { AppLanguage } from './uiLanguage'
-
-const STEPS: Record<AppLanguage, string[]> = {
+// pt tem PT; qualquer outro idioma do app (en/ko/zh) usa o inglês no splash.
+const STEPS: Record<'pt' | 'en', string[]> = {
   pt: ['Iniciando…', 'Carregando seus idiomas…', 'Preparando o tutor…', 'Sincronizando revisões…', 'Quase lá…'],
   en: ['Starting…', 'Loading your languages…', 'Preparing the tutor…', 'Syncing reviews…', 'Almost there…'],
 }
 
-const TAGLINE: Record<AppLanguage, string> = {
+const TAGLINE: Record<'pt' | 'en', string> = {
   pt: 'Mergulhe no idioma',
   en: 'Dive into the language',
 }
 
 /** Passos cíclicos do status no idioma dado. */
-export function splashSteps(lang: AppLanguage): string[] {
-  return STEPS[lang] ?? STEPS.en
+export function splashSteps(lang: string): string[] {
+  return STEPS[lang === 'pt' ? 'pt' : 'en']
 }
 
-export function splashTagline(lang: AppLanguage): string {
-  return TAGLINE[lang] ?? TAGLINE.en
+export function splashTagline(lang: string): string {
+  return TAGLINE[lang === 'pt' ? 'pt' : 'en']
 }
 
 /** Próximo índice da rotação (faz wrap). Lista vazia → 0. */

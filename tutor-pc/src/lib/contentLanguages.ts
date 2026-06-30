@@ -10,8 +10,8 @@ export const CONTENT_LANGUAGE_CODES = ['en', 'zh', 'ja', 'ko', 'es', 'pt', 'fr',
 export interface ContentLanguageOption { code: string; label: string }
 
 /** Lista para o seletor: 'auto' + idiomas suportados (bandeira + nome), no idioma da interface. */
-export function contentLanguageOptions(uiLang: 'pt' | 'en' = 'pt'): ContentLanguageOption[] {
-  const auto = uiLang === 'en' ? '🌐 Detect automatically' : '🌐 Detectar automaticamente'
+export function contentLanguageOptions(uiLang: string = 'pt'): ContentLanguageOption[] {
+  const auto = uiLang === 'pt' ? '🌐 Detectar automaticamente' : '🌐 Detect automatically'
   return [
     { code: 'auto', label: auto },
     ...CONTENT_LANGUAGE_CODES.map(code => ({ code, label: `${languageFlag(code)} ${languageNameFor(code, uiLang)}` })),

@@ -37,11 +37,12 @@ export function languageName(lang: string): string {
   return NAMES[baseLang(lang)] ?? lang.toUpperCase()
 }
 
-/** Human name localized for the app UI language. */
-export function languageNameFor(lang: string, uiLang: 'pt' | 'en'): string {
-  if (!lang || lang === 'unknown') return uiLang === 'en' ? 'Other' : 'Outro'
+/** Human name localized for the app UI language (só pt tem PT; ko/zh/en caem no inglês). */
+export function languageNameFor(lang: string, uiLang: string): string {
+  const pt = uiLang === 'pt'
+  if (!lang || lang === 'unknown') return pt ? 'Outro' : 'Other'
   const base = baseLang(lang)
-  return (uiLang === 'en' ? NAMES_EN[base] : NAMES[base]) ?? lang.toUpperCase()
+  return (pt ? NAMES[base] : NAMES_EN[base]) ?? lang.toUpperCase()
 }
 
 /** Flag emoji for a language code, or a generic globe. */

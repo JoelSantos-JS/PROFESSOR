@@ -25,8 +25,8 @@ export interface AppSettings {
 
 const DEFAULTS: AppSettings = {
   targetLanguage: 'en',
-  appLanguage: 'pt',
-  nativeLanguage: 'pt-BR',
+  appLanguage: '',          // VAZIO no 1º uso → appLanguage() resolve pelo LOCALE: pt→pt, resto→EN (default inglês)
+  nativeLanguage: '',       // idem: vazio → resolve pelo locale (não força pt-BR pra quem é de fora)
   contentLanguage: 'auto',
   audioInputDevice: 'default',
   transcriptionSource: 'system',

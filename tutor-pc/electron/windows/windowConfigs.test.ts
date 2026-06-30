@@ -17,10 +17,17 @@ describe('auth window config', () => {
 })
 
 describe('janelas sólidas — sem flash escuro na criação', () => {
-  // O fundo inicial (1º frame, antes do React pintar) deve ser o --bg do tema (Deep Soak #EDF3F2),
-  // não a cor do tema escuro antigo (#070D17), pra não "piscar preto" ao abrir a janela.
-  it.each(['dashboard', 'settings', 'review'] as const)('%s nasce com o fundo do tema', name => {
-    expect(windowConfigs[name].options.backgroundColor).toBe('#EDF3F2')
+  // review continua SÓLIDA: o 1º frame usa o --bg do tema (Deep Soak #EDF3F2), não o escuro antigo
+  // (#070D17), pra não "piscar preto" ao abrir.
+  it('review nasce com o fundo do tema', () => {
+    expect(windowConfigs.review.options.backgroundColor).toBe('#EDF3F2')
+  })
+
+  // dashboard + settings agora são TRANSPARENTES (cantos arredondados) → fundo alpha total
+  // (#00000000), senão a quina arredondada renderiza preta no Windows.
+  it.each(['dashboard', 'settings'] as const)('%s é transparente p/ cantos arredondados', name => {
+    expect(windowConfigs[name].options.transparent).toBe(true)
+    expect(windowConfigs[name].options.backgroundColor).toBe('#00000000')
   })
 
   it('janelas transparentes (overlays) não recebem fundo sólido', () => {

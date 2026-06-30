@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Activity, AlertTriangle, BookOpen, Brain, Flame, Home, Mic, Settings, Target } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { windowAPI, storeAPI, settingsAPI, authAPI } from '../services/electron'
+import { windowAPI, storeAPI, settingsAPI, authAPI, onChannel } from '../services/electron'
 import { languageFlagCountry, languageNameFor } from '../lib/languages'
 import { flagAssetForCountry } from '../lib/flagAssets'
 import { goalProgress } from '../lib/dailyGoal'
@@ -36,6 +36,14 @@ export default function Dashboard() {
       .catch(() => setUserName(''))
   }, [])
 
+  // Idioma/idioma-alvo mudam NA HORA quando o usuário troca nas Configurações (sem reiniciar).
+  useEffect(() => onChannel('settings:changed', () => {
+    settingsAPI.getAll().then(s => {
+      setUiLang(appLanguage(s.appLanguage))
+      setTargetLang((s.targetLanguage || 'en').split('-')[0])
+    }).catch(() => {})
+  }), [])
+
   if (onboarded === false) return <Onboarding onDone={() => setOnboarded(true)} />
 
   const goal = goalProgress(capturedToday)
@@ -49,7 +57,7 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="flex flex-col h-screen app-paper text-foreground">
+    <div className="flex flex-col h-screen app-paper text-foreground overflow-hidden rounded-[14px] border border-border-strong">
       <TitleBar title={t('dashboardTitle')} />
 
       <div className="flex flex-1 overflow-hidden">

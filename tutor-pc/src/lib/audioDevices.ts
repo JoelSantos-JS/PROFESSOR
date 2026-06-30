@@ -12,10 +12,10 @@ export async function openMicStream(deviceId?: string): Promise<MediaStream> {
 }
 
 /** Rótulo amigável do microfone (nome do device; ou "Microfone N" quando o label vem vazio). */
-export function micLabel(label: string, index: number, uiLang: 'pt' | 'en'): string {
+export function micLabel(label: string, index: number, uiLang: string): string {
   const clean = (label || '').trim()
   if (clean) return clean
-  return uiLang === 'en' ? `Microphone ${index + 1}` : `Microfone ${index + 1}`
+  return uiLang === 'pt' ? `Microfone ${index + 1}` : `Microphone ${index + 1}`
 }
 
 /**

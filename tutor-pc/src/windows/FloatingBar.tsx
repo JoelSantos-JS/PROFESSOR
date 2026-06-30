@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Mic, MicOff, Loader2, Settings, X, Volume2, User, Zap, Globe } from 'lucide-react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Mic, MicOff, Loader2, Settings, X, Volume2, User, Zap, Globe, Target } from 'lucide-react'
 import { windowAPI, audioAPI, tutorAPI, onChannel, storeAPI, mediaAPI, ttsAPI, sessionAPI, floatingBarAPI, settingsAPI, syncAPI } from '../services/electron'
 import { floatingBarMode } from '../lib/floatingBar'
 import { uiText, appLanguage, type AppLanguage } from '../lib/uiLanguage'
@@ -35,6 +35,9 @@ async function toWavOrRaw(blob: Blob): Promise<{ buffer: ArrayBuffer; mimeType: 
 import DiffView from '../components/DiffView'
 import PronunciationCompare from '../components/PronunciationCompare'
 import WordDrill from '../components/WordDrill'
+import PronunciationDiagnostic from '../components/PronunciationDiagnostic'
+import { wordDrillItems } from '../lib/pronunciationProfile'
+import { sessionMistakes } from '../lib/sessionDrill'
 import { playClip } from '../lib/playClip'
 import type { SessionAttempt, DiffToken, WordCue } from '../types'
 
@@ -508,7 +511,7 @@ export default function FloatingBar() {
   }, [startListening, stopListening])
 
   useEffect(() => {
-    settingsAPI.getAll().then(s => {
+    const load = () => settingsAPI.getAll().then(s => {
       const lang = appLanguage(s.appLanguage)
       setUiLang(lang)
       uiLangRef.current = lang
@@ -521,6 +524,8 @@ export default function FloatingBar() {
       const cycle = Array.from(new Set(['auto', ...learn, cl]))
       langCycleRef.current = cycle.length > 1 ? cycle : ['auto', 'en', 'ko']
     }).catch(() => {})
+    load()
+    return onChannel('settings:changed', load)   // idioma/ajustes mudam na hora (sem reiniciar)
   }, [])
 
   useEffect(() => {
@@ -615,7 +620,7 @@ export default function FloatingBar() {
         style={{ WebkitAppRegion: 'drag' }}
       >
         {/* Tabs */}
-        <div className="flex items-center gap-0.5 flex-1" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="flex items-center gap-0.5 flex-1 min-w-0" style={{ WebkitAppRegion: 'no-drag' }}>
           <TabBtn
             active={activeTab === 'transcricao'}
             icon={<Mic size={11} />}
@@ -630,30 +635,13 @@ export default function FloatingBar() {
           />
         </div>
 
-        {/* Right controls */}
-        <div className="flex items-center gap-1 pb-2" style={{ WebkitAppRegion: 'no-drag' }}>
-          {/* Status + tempo da sessão fundidos (cabe em 400px) */}
-          <div
-            className={[
-              'flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-extrabold tracking-wider transition-all',
-              isListening ? 'bg-danger/20 text-[#ffb3ad]' : 'bg-white/5 text-white/45',
-            ].join(' ')}
-            title={t('sessionTimeTitle')}
-          >
-            {isListening
-              ? <><span className="live-dot" />{t('live')}</>
-              : transcribing
-              ? <><Loader2 size={9} className="animate-spin" />PROC…</>
-              : <><span className="w-1.5 h-1.5 rounded-full bg-white/30" />OFF</>}
-            {sessionStartedAt && (
-              <span className="font-mono tabular-nums font-semibold opacity-75 pl-0.5">{sessionTime}</span>
-            )}
-          </div>
+        {/* Right controls (status/timer foi pra barra de baixo → topo só com idioma/ajustes) */}
+        <div className="shrink-0 flex items-center gap-1 pb-2" style={{ WebkitAppRegion: 'no-drag' }}>
           {/* Seletor de idioma do áudio (trava o Whisper) */}
           <button
             onClick={cycleContentLang}
             className={[
-              'flex items-center gap-1 h-[26px] px-2 rounded-full text-[10px] font-bold tracking-wide transition-colors',
+              'shrink-0 flex items-center gap-1 h-[26px] px-1.5 rounded-full text-[10px] font-bold tracking-wide transition-colors',
               contentLang === 'auto'
                 ? 'bg-white/5 text-white/55 hover:text-white hover:bg-white/10'
                 : 'bg-[#7fe3cf]/15 text-[#7fe3cf] hover:bg-[#7fe3cf]/25',
@@ -661,21 +649,21 @@ export default function FloatingBar() {
             title={t('audioLangTitle')}
           >
             {contentLang === 'auto'
-              ? <><Globe size={11} className="shrink-0" />{detectedLang
-                  ? <FlagImg lang={detectedLang} className="w-[15px] h-[11px]" />
-                  : <span className="text-[9px] opacity-80">AUTO</span>}</>
+              ? (detectedLang
+                  ? <FlagImg lang={detectedLang} className="w-[16px] h-[12px]" />
+                  : <Globe size={12} className="shrink-0" />)
               : <><FlagImg lang={contentLang} className="w-[16px] h-[12px]" />{contentLang.toUpperCase()}</>}
           </button>
           <button
             onClick={() => windowAPI.show('settings')}
-            className="w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-white hover:bg-white/10 transition-colors"
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-white hover:bg-white/10 transition-colors"
             title={t('settings')}
           >
             <Settings size={12} />
           </button>
           <button
             onClick={() => windowAPI.hide()}
-            className="w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-[#ffb3ad] hover:bg-white/10 transition-colors"
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-[9px] text-white/55 hover:text-[#ffb3ad] hover:bg-white/10 transition-colors"
             title={t('hide')}
           >
             <X size={12} />
@@ -721,9 +709,28 @@ export default function FloatingBar() {
       {/* ── Audio level meter (diagnostic) ─────────────────────── */}
       {isListening && !practiceSentence && <AudioMeter level={level} gate={MIN_PEAK} />}
 
+      {/* Status + tempo da sessão — movido do topo pra cá (libera espaço pras abas) */}
+      <div
+        className="shrink-0 flex items-center justify-center gap-2 px-3 pt-2 border-t border-white/[0.08] text-[10px] font-extrabold tracking-wider bg-white/[0.03]"
+        style={{ WebkitAppRegion: 'no-drag' }}
+        title={t('sessionTimeTitle')}
+      >
+        <span className={['flex items-center gap-1.5', isListening ? 'text-[#ffb3ad]' : 'text-white/45'].join(' ')}>
+          {isListening
+            ? <span className="live-dot" />
+            : transcribing
+            ? <Loader2 size={9} className="animate-spin" />
+            : <span className="w-1.5 h-1.5 rounded-full bg-white/30" />}
+          {isListening ? t('live') : transcribing ? 'PROC…' : 'OFF'}
+        </span>
+        {sessionStartedAt && (
+          <span className="font-mono tabular-nums font-semibold text-white/65">{sessionTime}</span>
+        )}
+      </div>
+
       {/* ── Bottom bar ─────────────────────────────────────────── */}
       <div
-        className="shrink-0 border-t border-white/[0.08] px-3 py-3 grid grid-cols-[92px_minmax(162px,1fr)_92px] gap-2 bg-white/[0.03]"
+        className="shrink-0 px-3 pt-2 pb-3 grid grid-cols-[92px_minmax(162px,1fr)_92px] gap-2 bg-white/[0.03]"
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         <button
@@ -912,14 +919,13 @@ function TabBtn({ active, icon, label, onClick }: { active?: boolean; icon: Reac
   return (
     <button
       onClick={onClick}
+      title={label}
       className={[
-        'flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-[11px] transition-colors',
-        active
-          ? 'bg-white/12 text-white'
-          : 'text-white/62 hover:text-white hover:bg-white/[0.06]',
+        'shrink-0 flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold rounded-[11px] transition-colors',
+        active ? 'bg-white/12 text-white' : 'text-white/62 hover:text-white hover:bg-white/[0.06]',
       ].join(' ')}
     >
-      {icon}{label}
+      {icon}<span className="truncate">{label}</span>
     </button>
   )
 }
@@ -1002,7 +1008,13 @@ export function TranscriptList({ lines, interim, processing, error }: {
 // ── Session feed (my practice attempts) ───────────────────────────────────────
 function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
   const t = useT()
+  const uiLang = useUiLang()
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [drillOpen, setDrillOpen] = useState(false)
+
+  // Erros (palavras 'missing') de TODA a sessão → drill de pronúncia em um clique.
+  const mistakes = useMemo(() => sessionMistakes(attempts), [attempts])
+  const drillItems = useMemo(() => wordDrillItems(mistakes.lang, mistakes.words), [mistakes])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1019,8 +1031,19 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto py-3 px-3.5 space-y-2">
-      {attempts.map((a, i) => (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {drillItems.length > 0 && (
+        <div className="px-3.5 pt-3 shrink-0">
+          <button
+            onClick={() => setDrillOpen(true)}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary/90 hover:bg-primary text-white text-[13px] font-semibold py-2 transition-colors"
+          >
+            <Target size={14} /> {t('trainSessionMistakes')} ({mistakes.words.length})
+          </button>
+        </div>
+      )}
+      <div className="flex-1 min-h-0 overflow-y-auto py-3 px-3.5 space-y-2">
+        {attempts.map((a, i) => (
         <div key={i} className="rounded-xl bg-white/[0.05] border border-white/[0.06] px-3 py-2.5">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
@@ -1059,7 +1082,18 @@ function SessionList({ attempts }: { attempts: SessionAttempt[] }) {
           <PronunciationCompare attempt={a} />
         </div>
       ))}
-      <div ref={bottomRef} />
+        <div ref={bottomRef} />
+      </div>
+
+      {drillOpen && (
+        <PronunciationDiagnostic
+          lang={mistakes.lang}
+          uiLang={uiLang}
+          items={drillItems}
+          title={t('trainSessionMistakes')}
+          onClose={() => setDrillOpen(false)}
+        />
+      )}
     </div>
   )
 }

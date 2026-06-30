@@ -22,8 +22,10 @@ export function setupWindowHandlers(windowManager: WindowManager, onAuthComplete
   ipcMain.on('window:close', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
+    // X na Home (janela principal): NÃO encerra o app — minimiza tudo pra bandeja (continua
+    // rodando, sem perder a sessão/login). Sair de verdade é pela bandeja → "Sair".
     if (windowManager.getWindowName(win) === 'dashboard') {
-      windowManager.closeWorkspaceWindows()
+      windowManager.minimizeToTray()
       return
     }
     win.close()

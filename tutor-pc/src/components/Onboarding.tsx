@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, ExternalLink, KeyRound, RefreshCw, ArrowRight, Sparkles, Lock } from 'lucide-react'
 import TitleBar from './TitleBar'
-import { settingsAPI, credentialsAPI, windowAPI } from '../services/electron'
+import { settingsAPI, credentialsAPI, windowAPI, onChannel } from '../services/electron'
 import { languageNameFor, languageFlag } from '../lib/languages'
 import { uiText, appLanguage, type AppLanguage, type UiKey } from '../lib/uiLanguage'
 import { UiLangProvider, useT, useUiLang } from '../lib/uiLangContext'
@@ -49,6 +49,14 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     credentialsAPI.list().then(ps => setHasKey(ps.some(p => p.configured))).catch(() => setHasKey(false))
 
   useEffect(() => { if (step === 'apiKey') refreshKeys() }, [step])
+  // Re-checa quando uma chave é salva (mesmo em OUTRA janela — Configurações) e quando a janela
+  // recebe foco de volta → destrava o "Continuar" sem precisar reabrir o app.
+  useEffect(() => onChannel('credentials:changed', refreshKeys), [])
+  useEffect(() => {
+    const onFocus = () => { if (step === 'apiKey') refreshKeys() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [step])
   useEffect(() => { settingsAPI.getAll().then(s => setUiLang(appLanguage(s.appLanguage))).catch(() => {}) }, [])
 
   const finish = async () => {

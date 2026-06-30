@@ -13,7 +13,7 @@ import { setupPronunciationHandlers } from './pronunciationHandlers.js'
 export function setupIPC(windowManager: WindowManager, onAuthComplete?: () => void, onLogout?: () => void): void {
   setupAuthHandlers()
   setupWindowHandlers(windowManager, onAuthComplete, onLogout)
-  setupSettingsHandlers()
+  setupSettingsHandlers(windowManager)
   setupCredentialsHandlers()
   setupAudioHandlers()
   setupTutorHandlers(windowManager)

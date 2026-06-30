@@ -12,6 +12,8 @@ export interface LoopRunConfig {
   repeats: number
   gap: 'none' | 'echo' | number
   speeds?: number[]
+  onTime?: (ms: number, dur: number) => void   // progresso da reprodução → sync de palavras (karaokê)
+  onEnd?: () => void                            // ao terminar/parar → reseta o destaque
 }
 
 export interface LoopPlayerState {
@@ -24,12 +26,15 @@ export function useLoopPlayer(url?: string) {
   const [state, setState] = useState<LoopPlayerState>({ phase: 'idle', repeat: 0, total: 0 })
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const cfgRef = useRef<LoopRunConfig | null>(null)
   const cancelledRef = useRef(false)
   const pausedRef = useRef(false)
 
   const teardown = useCallback(() => {
     cancelledRef.current = true
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     const a = audioRef.current
     if (a) { a.onended = null; a.onerror = null; try { a.pause() } catch { /* ignore */ } }
     audioRef.current = null
@@ -37,6 +42,7 @@ export function useLoopPlayer(url?: string) {
   }, [])
 
   const stop = useCallback(() => {
+    cfgRef.current?.onEnd?.()   // reseta o destaque das palavras (no fim natural ou no stop manual)
     teardown()
     setState({ phase: 'idle', repeat: 0, total: 0 })
   }, [teardown])
@@ -48,6 +54,7 @@ export function useLoopPlayer(url?: string) {
 
     teardown()
     cancelledRef.current = false
+    cfgRef.current = cfg
     stopClip()                        // encerra qualquer outro clipe + reseta seu estado
     listeningAPI.pause(); pausedRef.current = true
     setState({ phase: 'play', repeat: 0, total })
@@ -61,9 +68,18 @@ export function useLoopPlayer(url?: string) {
       const startedAt = performance.now()
       let advanced = false
 
+      // Emite o tempo da reprodução a cada frame → sincroniza o destaque das palavras (karaokê).
+      const tick = () => {
+        if (cancelledRef.current || advanced) return
+        const dur = Number.isFinite(audio.duration) ? audio.duration * 1000 : 0
+        cfg.onTime?.(audio.currentTime * 1000, dur)
+        rafRef.current = requestAnimationFrame(tick)
+      }
+
       const next = () => {
         if (advanced) return    // onended + onerror/catch podem disparar juntos
         advanced = true
+        if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
         audio.onended = null; audio.onerror = null
         if (cancelledRef.current) return
         if (idx + 1 >= total) { stop(); return }
@@ -80,6 +96,7 @@ export function useLoopPlayer(url?: string) {
       audio.onended = next
       audio.onerror = next
       audio.play().catch(next)
+      rafRef.current = requestAnimationFrame(tick)   // começa a sincronizar as palavras
     }
 
     playOne(0)

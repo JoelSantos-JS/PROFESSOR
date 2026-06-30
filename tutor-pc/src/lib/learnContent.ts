@@ -127,7 +127,8 @@ const CONTENT: Record<UiLang, Record<string, LearnContent>> = {
 }
 
 /** Conteúdo de aprendizado para um idioma (base zh/ja/ko), no idioma da UI, com fallback genérico. */
-export function learnContentFor(lang: string, uiLang: UiLang = 'pt'): LearnContent {
+export function learnContentFor(lang: string, uiLangRaw: string = 'pt'): LearnContent {
+  const uiLang: UiLang = uiLangRaw === 'pt' ? 'pt' : 'en'   // ko/zh caem no inglês
   const base = (lang || '').toLowerCase().split('-')[0]
   return CONTENT[uiLang][base] ?? { channels: [wiki(uiLang)] }
 }

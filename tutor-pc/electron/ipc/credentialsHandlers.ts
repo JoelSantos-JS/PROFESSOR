@@ -1,7 +1,15 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { CredentialsService, type ProviderId } from '../services/credentialsService'
 import { providerFetch } from '../lib/providerFetch.js'
 import { buildTestProbe } from '../lib/providerTestProbe.js'
+
+// Notifica TODAS as janelas que as credenciais mudaram → o onboarding ("adicione uma chave") re-checa
+// NA HORA, mesmo a chave tendo sido salva em outra janela (Configurações) → destrava o "abrir o app".
+function broadcastCredentialsChanged(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('credentials:changed')
+  }
+}
 
 export function setupCredentialsHandlers(): void {
   const credentials = new CredentialsService()
@@ -11,6 +19,7 @@ export function setupCredentialsHandlers(): void {
   ipcMain.handle('credentials:set', async (_e, id: ProviderId, key: string) => {
     try {
       credentials.set(id, key)
+      broadcastCredentialsChanged()
       return { ok: true }
     } catch (err) {
       console.error('[credentials:set] error:', (err as Error).message)
@@ -20,7 +29,7 @@ export function setupCredentialsHandlers(): void {
 
   ipcMain.handle('credentials:get', (_e, id: ProviderId) => credentials.get(id))
 
-  ipcMain.handle('credentials:remove', (_e, id: ProviderId) => credentials.remove(id))
+  ipcMain.handle('credentials:remove', (_e, id: ProviderId) => { credentials.remove(id); broadcastCredentialsChanged() })
 
   ipcMain.handle('credentials:debug', () => credentials.debugInfo())
 

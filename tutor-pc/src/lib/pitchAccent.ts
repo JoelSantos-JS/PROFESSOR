@@ -78,6 +78,6 @@ const TYPE_LABEL: Record<'pt' | 'en', Record<AccentType, string>> = {
   },
 }
 
-export function accentTypeLabel(type: AccentType, uiLang: 'pt' | 'en' = 'pt'): string {
-  return TYPE_LABEL[uiLang][type]
+export function accentTypeLabel(type: AccentType, uiLang: string = 'pt'): string {
+  return TYPE_LABEL[uiLang === 'pt' ? 'pt' : 'en'][type]
 }

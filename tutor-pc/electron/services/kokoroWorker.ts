@@ -9,6 +9,7 @@ interface RequestMessage {
   id: number
   text: string
   voice: string
+  speed?: number
   cacheDir: string
 }
 
@@ -46,7 +47,8 @@ async function getTts(cacheDir: string): Promise<KokoroInstance> {
 async function handle(message: RequestMessage): Promise<void> {
   try {
     const tts = await getTts(message.cacheDir)
-    const rawAudio = await tts.generate(message.text, { voice: message.voice, speed: 0.96 })
+    // velocidade vem do ttsService (KOKORO_SPEED) — time-stretch do Kokoro, sem mudar o tom
+    const rawAudio = await tts.generate(message.text, { voice: message.voice, speed: message.speed ?? 0.90 })
     const wav = rawAudio.toWav()
     parentPort?.postMessage({ id: message.id, ok: true, audio: wav }, [wav])
   } catch (err) {

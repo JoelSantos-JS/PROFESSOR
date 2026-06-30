@@ -62,7 +62,8 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       minHeight: 600,
       show: false,
       frame: false,
-      backgroundColor: '#EDF3F2',  // --bg (Deep Soak) p/ não dar flash antes do conteúdo pintar
+      transparent: true,             // cantos arredondados (o root desenha o card; as quinas viram transparentes)
+      backgroundColor: '#00000000',  // alpha total — sem isso a quina arredondada renderiza preta no Windows
       webPreferences: baseWebPrefs,
     },
   },
@@ -94,7 +95,8 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       show: false,
       frame: false,
       resizable: false,
-      backgroundColor: '#EDF3F2',  // --bg (Deep Soak) p/ não dar flash antes do conteúdo pintar
+      transparent: true,             // cantos arredondados (o root desenha o card)
+      backgroundColor: '#00000000',  // alpha total — quina arredondada não renderiza preta no Windows
       webPreferences: baseWebPrefs,
     },
   },
@@ -109,6 +111,7 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       show: false,
       frame: false,
       transparent: true,
+      backgroundColor: '#00000000',  // alpha total — quina arredondada não renderiza preta no Windows
       webPreferences: baseWebPrefs,
     },
   },
@@ -140,7 +143,8 @@ export const windowConfigs: Record<WindowName, WindowConfig> = {
       backgroundColor: '#00000000',  // alpha total — sem isso a margem renderiza preta no Windows
       alwaysOnTop: true,
       resizable: false,
-      movable: true,
+      movable: true,    // precisa ser true p/ o setPosition (positionDock) funcionar no Windows; o "fixo"
+                        // vem de NÃO ter região de arrastar no Dock.tsx (usuário não consegue mover)
       skipTaskbar: true,
       title: 'Soaken',
       webPreferences: baseWebPrefs,

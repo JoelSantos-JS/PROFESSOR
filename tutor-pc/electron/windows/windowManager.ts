@@ -4,6 +4,16 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { WindowName, windowConfigs } from './windowConfigs'
 import { floatingBarSize } from '../lib/floatingBarSize.js'
+import { SettingsService } from '../services/settingsService'
+
+// Idioma do menu da bandeja (processo main não tem o i18n do renderer) — só os 3 rótulos + tooltip.
+type TrayLang = 'pt' | 'en' | 'ko' | 'zh'
+const TRAY_LABELS: Record<TrayLang, { show: string; hide: string; quit: string }> = {
+  pt: { show: 'Mostrar Soaken', hide: 'Esconder', quit: 'Sair' },
+  en: { show: 'Show Soaken',    hide: 'Hide',      quit: 'Quit' },
+  ko: { show: 'Soaken 표시',     hide: '숨기기',     quit: '종료' },
+  zh: { show: '显示 Soaken',     hide: '隐藏',       quit: '退出' },
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -13,11 +23,27 @@ export class WindowManager {
   private preloadPath: string
   private tray: Tray | null = null
   private floatingBarMode: 'compact' | 'full' = 'compact'   // começa compacta (abre vazia)
+  private stashedWindows: WindowName[] = []   // janelas escondidas pelo X (p/ restaurar pela bandeja)
+  private _settings?: SettingsService   // lazy: só instancia quando a bandeja precisa do idioma
 
   constructor(isDev: boolean) {
     this.isDev = isDev
     // preload.js lives in the same dist-electron/ directory as main.mjs
     this.preloadPath = path.join(__dirname, 'preload.js')
+  }
+
+  // Idioma do menu da bandeja = idioma do app (Configurações). Vazio → cai no locale (pt/en);
+  // ko/zh só quando escolhidos explicitamente (mesma regra do appLanguage() do renderer).
+  // Defensivo: se as Configurações/locale não estiverem disponíveis, cai em 'en'.
+  private trayLang(): TrayLang {
+    try {
+      this._settings ??= new SettingsService()
+      const raw = (this._settings.getAll().appLanguage || '').toLowerCase()
+      if (raw === 'pt' || raw === 'en' || raw === 'ko' || raw === 'zh') return raw
+    } catch { /* settings indisponível */ }
+    try {
+      return app.getLocale().toLowerCase().startsWith('pt') ? 'pt' : 'en'
+    } catch { return 'en' }
   }
 
   /** Caminho de um ícone gerado (public/icon → copiado p/ dist/renderer/icon no build). */
@@ -136,23 +162,60 @@ export class WindowManager {
     else this.showBars()
   }
 
+  // X na Home: NÃO encerra o app — esconde TODAS as janelas do workspace (continua vivo na
+  // bandeja). Guarda quais estavam visíveis pra restaurar exatamente o mesmo conjunto depois.
+  private static readonly WORKSPACE: WindowName[] =
+    ['dashboard', 'tutor-board', 'settings', 'review', 'floating-bar', 'dock']
+
+  minimizeToTray(): void {
+    this.stashedWindows = WindowManager.WORKSPACE.filter(name => {
+      const w = this.windows.get(name)
+      return !!(w && !w.isDestroyed() && w.isVisible())
+    })
+    this.stashedWindows.forEach(name => this.windows.get(name)?.hide())
+    this.ensureTray()   // garante o ponto de restauração na bandeja
+  }
+
+  /** Restaura o que estava aberto antes do X (ou, na dúvida, dock + barra flutuante). */
+  restoreFromTray(): void {
+    const toShow = this.stashedWindows.length ? this.stashedWindows : (['dock', 'floating-bar'] as WindowName[])
+    toShow.forEach(name => this.showWindow(name))
+    this.stashedWindows = []
+  }
+
   // Ícone na bandeja do sistema (system tray). Janela transparente não rende botão confiável
   // na barra de tarefas do Windows, então a bandeja é o ponto fixo p/ restaurar dock+barra.
   private ensureTray(): void {
-    if (this.tray && !this.tray.isDestroyed()) return
+    if (this.tray && !this.tray.isDestroyed()) { this.applyTrayMenu(); return }
     try {
       this.tray = new Tray(this.trayIcon())
       this.tray.setToolTip('Soaken')
-      this.tray.setContextMenu(Menu.buildFromTemplate([
-        { label: 'Mostrar Soaken', click: () => this.showBars() },
-        { label: 'Esconder',       click: () => this.hideBars() },
-        { type: 'separator' },
-        { label: 'Sair',           click: () => app.quit() },
-      ]))
-      this.tray.on('click', () => this.toggleBars())
+      this.applyTrayMenu()
+      // Clique na bandeja: restaura o que o X escondeu; senão, alterna dock + barra.
+      this.tray.on('click', () => {
+        if (this.stashedWindows.length) this.restoreFromTray()
+        else this.toggleBars()
+      })
     } catch (err) {
       console.warn('[tray] falhou ao criar:', (err as Error).message)
     }
+  }
+
+  /** Monta o menu da bandeja no idioma atual do app. */
+  private applyTrayMenu(): void {
+    if (!this.tray || this.tray.isDestroyed()) return
+    const L = TRAY_LABELS[this.trayLang()]
+    this.tray.setContextMenu(Menu.buildFromTemplate([
+      { label: L.show, click: () => this.restoreFromTray() },
+      { label: L.hide, click: () => this.minimizeToTray() },
+      { type: 'separator' },
+      { label: L.quit, click: () => app.quit() },
+    ]))
+  }
+
+  /** Reconstrói o menu da bandeja (ex.: quando o idioma do app muda nas Configurações). */
+  refreshTrayMenu(): void {
+    this.applyTrayMenu()
   }
 
   /** Ícone da bandeja: o ícone real (gota Soaken); fallback p/ quadrado teal gerado se faltar. */

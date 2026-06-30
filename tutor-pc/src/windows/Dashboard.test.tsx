@@ -33,6 +33,7 @@ vi.mock('../services/electron', () => ({
     logout: h.authLogout,
   },
   windowAPI: { show: h.show, openReview: vi.fn(), close: vi.fn(), minimize: vi.fn(), onboardingComplete: vi.fn() },
+  onChannel: vi.fn(() => () => {}),
 }))
 
 import Dashboard from './Dashboard'

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound, AlertTriangle, X, LogOut } from 'lucide-react'
+import { Eye, EyeOff, Check, ExternalLink, Trash2, KeyRound, AlertTriangle, X, LogOut, Volume2, Loader2 } from 'lucide-react'
 import TitleBar from '../components/TitleBar'
-import { settingsAPI, credentialsAPI, forvoAPI, authAPI, windowAPI } from '../services/electron'
+import { settingsAPI, credentialsAPI, forvoAPI, authAPI, windowAPI, ttsAPI } from '../services/electron'
+import { playClip } from '../lib/playClip'
 import { validateApiKey, pickActiveProvider } from '../lib/apiKeyValidation'
-import { NATIVE_LANGUAGES } from '../lib/nativeLang'
+import { NATIVE_LANGUAGES, resolveNativeLanguage } from '../lib/nativeLang'
 import { contentLanguageOptions, normalizeContentLanguage } from '../lib/contentLanguages'
 import { APP_LANGUAGES, appLanguage, uiText, type AppLanguage } from '../lib/uiLanguage'
 import { listMicrophones, micLabel } from '../lib/audioDevices'
@@ -61,12 +62,15 @@ const KOKORO_VOICES = [
   ['bm_fable', 'Fable', 'UK', 'm'],
 ] as const
 
-function kokoroVoiceLabel(name: string, region: string, gender: string, uiLang: 'pt' | 'en'): string {
-  const g = uiLang === 'en'
-    ? (gender === 'f' ? 'female' : 'male')
-    : (gender === 'f' ? 'feminina' : 'masculina')
+function kokoroVoiceLabel(name: string, region: string, gender: string, uiLang: string): string {
+  const g = uiLang === 'pt'
+    ? (gender === 'f' ? 'feminina' : 'masculina')
+    : (gender === 'f' ? 'female' : 'male')
   return `${name} - ${region} ${g}`
 }
+
+// Amostra CURTA p/ o preview da voz (tempo de geração ∝ tamanho do texto). Vozes Kokoro = inglês.
+const VOICE_PREVIEW_SAMPLE = 'Hi! This is my voice.'
 
 export default function Settings() {
   const [settings, setSettings] = useState<Partial<AppSettings>>({})
@@ -85,6 +89,23 @@ export default function Settings() {
     settingsAPI.getAll().then(setSettings)
     credentialsAPI.list().then(setProviders)
     listMicrophones().then(setMics)
+  }, [])
+
+  // Pré-aquece o cache: gera a amostra de cada voz em segundo plano (sequencial, sem tocar) —
+  // a voz ATUAL primeiro (preview imediato), depois as outras. Depois disso todo preview é
+  // instantâneo (vem do disco). Só gera de verdade na 1ª vez.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const s = await settingsAPI.getAll().catch(() => ({} as Partial<AppSettings>))
+      const current = (s.ttsVoice as string) || 'af_heart'
+      const order = [current, ...KOKORO_VOICES.map(([id]) => id).filter(id => id !== current)]
+      for (const id of order) {
+        if (cancelled) return
+        await ttsAPI.speakVariant(VOICE_PREVIEW_SAMPLE, id, 'en').catch(() => {})
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   const isConfigured = (id: ProviderId) =>
@@ -158,6 +179,18 @@ export default function Settings() {
     flash()
   }
 
+  // Preview da voz: toca uma amostra na voz escolhida (speakVariant não mexe no setting salvo).
+  const [previewingVoice, setPreviewingVoice] = useState(false)
+  const previewVoice = async (voice: string) => {
+    if (!voice || previewingVoice) return
+    setPreviewingVoice(true)
+    try {
+      const res = await ttsAPI.speakVariant(VOICE_PREVIEW_SAMPLE, voice, 'en')
+      if (res?.ok && res.dataUrl) playClip(res.dataUrl)
+    } catch { /* ignore */ }
+    setPreviewingVoice(false)
+  }
+
   const testProvider = async (id: ProviderId) => {
     setTestState(prev => ({ ...prev, [id]: { testing: true } }))
     const result = await credentialsAPI.test(id)
@@ -175,22 +208,20 @@ export default function Settings() {
   const uiLang = appLanguage(settings.appLanguage as string | undefined)
   const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
   const localizedShortcuts = [
-    { key: 'Ctrl+Alt+L', desc: uiLang === 'en' ? 'Start / stop listening' : 'Iniciar / parar escuta' },
-    { key: 'Ctrl+Alt+D', desc: uiLang === 'en' ? 'Open Dashboard' : 'Abrir Dashboard' },
-    { key: 'Ctrl+Alt+S', desc: uiLang === 'en' ? 'Open Settings' : 'Abrir Configuracoes' },
-    { key: 'Ctrl+Alt+B', desc: uiLang === 'en' ? 'Open Tutor Board' : 'Abrir Tutor Board' },
-    { key: 'Ctrl+Alt+K', desc: uiLang === 'en' ? 'Show / hide dock' : 'Mostrar / esconder dock' },
-    { key: 'Ctrl+Alt+Space', desc: uiLang === 'en' ? 'Pause / resume player' : 'Pausar / retomar player' },
+    { key: 'Ctrl+Alt+L', desc: t('shortcutListen') },
+    { key: 'Ctrl+Alt+D', desc: t('shortcutDashboard') },
+    { key: 'Ctrl+Alt+S', desc: t('shortcutSettings') },
+    { key: 'Ctrl+Alt+B', desc: t('shortcutTutorBoard') },
+    { key: 'Ctrl+Alt+K', desc: t('shortcutDock') },
+    { key: 'Ctrl+Alt+Space', desc: t('shortcutPlayer') },
   ]
   const ttsProviders = TTS_PROVIDERS.map(provider => ({
     ...provider,
-    note: uiLang === 'en'
-      ? provider.id === 'kokoro' ? 'local English voice' : 'multi-language fallback'
-      : provider.note,
+    note: provider.id === 'kokoro' ? t('ttsLocalVoice') : t('ttsMultiFallback'),
   }))
 
   return (
-    <div className="flex flex-col h-screen app-paper text-foreground">
+    <div className="flex flex-col h-screen app-paper text-foreground overflow-hidden rounded-[14px] border border-border-strong">
       <TitleBar title={t('settings')} showMinimize={false} />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -415,7 +446,7 @@ export default function Settings() {
               </div>
               <select
                 aria-label={t('yourLanguage')}
-                value={(settings.nativeLanguage as string)?.split('-')[0] ?? 'pt'}
+                value={resolveNativeLanguage((settings.nativeLanguage as string) || navigator.language)}
                 onChange={e => updateSetting('nativeLanguage', e.target.value)}
                 className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer"
               >
@@ -510,15 +541,26 @@ export default function Settings() {
                 <span className="text-sm text-muted">{t('kokoroVoice')}</span>
                 <p className="text-[11px] text-muted mt-0.5">{t('kokoroNote')}</p>
               </div>
-              <select
-                value={(settings.ttsVoice as string) ?? 'af_heart'}
-                onChange={e => updateSetting('ttsVoice', e.target.value)}
-                className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer max-w-44"
-              >
-                {KOKORO_VOICES.map(([id, name, region, gender]) => (
-                  <option key={id} value={id}>{kokoroVoiceLabel(name, region, gender, uiLang)}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={(settings.ttsVoice as string) ?? 'af_heart'}
+                  onChange={e => { updateSetting('ttsVoice', e.target.value); previewVoice(e.target.value) }}
+                  className="bg-surface-2 border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary transition-colors cursor-pointer max-w-44"
+                >
+                  {KOKORO_VOICES.map(([id, name, region, gender]) => (
+                    <option key={id} value={id}>{kokoroVoiceLabel(name, region, gender, uiLang)}</option>
+                  ))}
+                </select>
+                {/* Preview: ouvir a voz selecionada (toca ao trocar e ao clicar). */}
+                <button
+                  onClick={() => previewVoice((settings.ttsVoice as string) ?? 'af_heart')}
+                  disabled={previewingVoice}
+                  title={t('listen')}
+                  className="grid place-items-center w-8 h-8 rounded-lg text-primary bg-primary/10 hover:bg-primary/15 disabled:opacity-50 transition-colors shrink-0"
+                >
+                  {previewingVoice ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
+                </button>
+              </div>
             </div>
           </div>
           <p className="text-xs text-muted mt-2 px-1">
@@ -572,12 +614,8 @@ export default function Settings() {
           <h2 className="label-eyebrow mb-3">{t('about')}</h2>
           <div className="paper-card p-4">
             <p className="display-title text-xl text-foreground mb-1">Soaken</p>
-            <p className="text-[11px] text-muted/80 mb-1">v0.1.0 · {uiLang === 'en' ? 'Dive into the language' : 'Mergulhe no idioma'}</p>
-            <p className="text-xs text-muted leading-relaxed">
-              {uiLang === 'en'
-                ? 'Your floating tutor for any language. Soaken listens to any audio on your PC — videos, calls, shows — and turns it into real speaking & pronunciation practice.'
-                : 'Seu professor flutuante para qualquer idioma. O Soaken escuta qualquer áudio do PC — vídeos, calls, séries — e transforma em prática real de fala e pronúncia.'}
-            </p>
+            <p className="text-[11px] text-muted/80 mb-1">v0.1.0 · {t('appTagline')}</p>
+            <p className="text-xs text-muted leading-relaxed">{t('aboutDescription')}</p>
           </div>
         </section>
 
@@ -724,7 +762,7 @@ function ForvoKeySection({ uiLang }: { uiLang: AppLanguage }) {
         type="password"
         value={value}
         onChange={e => setValue(e.target.value)}
-        placeholder={configured ? '••••••••  ' + t('configured') : 'Forvo API key'}
+        placeholder={configured ? '••••••••  ' + t('configured') : t('forvoKeyPlaceholder')}
         className="flex-1 bg-surface-2 border border-border text-foreground text-sm rounded-lg px-3 py-2 outline-none focus:border-primary transition-colors"
       />
       <button

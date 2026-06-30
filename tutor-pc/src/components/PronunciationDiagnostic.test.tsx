@@ -10,7 +10,11 @@ const h = vi.hoisted(() => ({
   decode: vi.fn(async () => null),
 }))
 
-vi.mock('../services/electron', () => ({ ttsAPI: { speak: h.speak }, listeningAPI: { pause: vi.fn(), resume: vi.fn() } }))
+vi.mock('../services/electron', () => ({
+  ttsAPI: { speak: h.speak },
+  listeningAPI: { pause: vi.fn(), resume: vi.fn() },
+  settingsAPI: { getAll: vi.fn(async () => ({ learnLanguages: '' })) },
+}))
 vi.mock('../lib/playClip', () => ({ playClip: vi.fn() }))
 vi.mock('../lib/decodeAudio', () => ({ decodeToMono: h.decode }))
 vi.mock('../hooks/usePractice', () => ({

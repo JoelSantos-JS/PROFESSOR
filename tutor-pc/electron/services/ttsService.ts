@@ -16,6 +16,7 @@ export { resolveVoice, VOICE_MAP, DEFAULT_VOICE } from '../lib/ttsVoices.js'
 
 const KOKORO_MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX'
 const KOKORO_DTYPE = 'q8'
+const KOKORO_SPEED = 0.90   // voz-modelo um pouco mais devagar p/ aprendizado (entra na chave do cache)
 const KOKORO_DEFAULT_VOICE = 'af_heart'
 const KOKORO_ENGLISH_VOICES = new Set([
   'af_heart',
@@ -96,6 +97,17 @@ export async function synthesize(text: string, lang: string): Promise<SynthesisR
  * então cada sotaque é gerado uma vez. Usado pelas "variantes de pronúncia" no lookup da palavra.
  */
 export async function synthesizeVoice(text: string, voice: string, lang = ''): Promise<SynthesisResult> {
+  // Voz do Kokoro → worker LOCAL (aquecido, ~1s). Sem isto, uma voz Kokoro (ex.: af_sarah) ia pro
+  // Edge (rede) com voz inválida → travava no timeout. Demais vozes = accents do Edge.
+  if (KOKORO_ENGLISH_VOICES.has(voice)) {
+    return synthesizeCached({
+      provider: 'kokoro',
+      lang: lang || 'en',
+      voice,
+      text,
+      create: () => synthesizeKokoro(text, voice),
+    })
+  }
   return synthesizeCached({
     provider: 'edge',
     lang: lang || voice,
@@ -166,6 +178,7 @@ async function synthesizeCached(req: CacheRequest): Promise<SynthesisResult> {
       lang: req.lang,
       voice: req.voice,
       model: req.provider === 'kokoro' ? `${KOKORO_MODEL_ID}:${KOKORO_DTYPE}` : 'edge',
+      speed: req.provider === 'kokoro' ? KOKORO_SPEED : undefined,   // muda a velocidade → regenera (não serve cache antigo)
       text: req.text.trim(),
     }))
     .digest('hex')
@@ -318,6 +331,7 @@ function generateKokoroInWorker(text: string, voice: string): Promise<Buffer> {
       id,
       text,
       voice,
+      speed: KOKORO_SPEED,
       cacheDir: join(app.getPath('userData'), 'models', 'huggingface'),
     })
   })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Home, Brain, BookOpen, Mic, Settings, EyeOff } from 'lucide-react'
-import { windowAPI, settingsAPI } from '../services/electron'
+import { windowAPI, settingsAPI, onChannel } from '../services/electron'
 import { uiText, appLanguage, type AppLanguage, type UiKey } from '../lib/uiLanguage'
 import type { WindowName } from '../types'
 
@@ -19,12 +19,14 @@ export default function Dock() {
   const t = (key: UiKey) => uiText(uiLang, key)
 
   useEffect(() => {
-    settingsAPI.getAll().then(s => setUiLang(appLanguage(s.appLanguage))).catch(() => {})
+    const load = () => settingsAPI.getAll().then(s => setUiLang(appLanguage(s.appLanguage))).catch(() => {})
+    load()
+    return onChannel('settings:changed', load)   // idioma muda na hora (sem reiniciar)
   }, [])
 
   return (
     <div className="h-screen w-screen overflow-hidden select-none flex items-center justify-center"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>   {/* FIXO — não arrasta */}
       <div
         className="flex items-center gap-1 h-[52px] rounded-[18px] border border-white/20 px-2 text-[#EAF0EA]"
         style={{

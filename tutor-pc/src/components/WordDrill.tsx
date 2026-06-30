@@ -50,7 +50,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
               )}
               <button
                 onClick={() => speakWord(word, attempt.lang)}
-                className="flex items-center justify-center w-5 h-5 rounded text-primary/80 hover:bg-primary/15 transition-colors"
+                className="flex items-center justify-center w-5 h-5 rounded text-[#7fe3cf]/90 hover:bg-[#7fe3cf]/15 transition-colors"
                 title={t('listenCorrectTts')}
               >
                 <Volume2 size={11} />
@@ -60,7 +60,7 @@ export default function WordDrill({ attempt }: { attempt: SessionAttempt }) {
         })}
       </div>
 
-      <p className="text-[10px] text-muted/50 mt-2 leading-snug">
+      <p className="text-[10px] text-white/50 mt-2 leading-snug">
         {t('drillHint')}
       </p>
     </div>

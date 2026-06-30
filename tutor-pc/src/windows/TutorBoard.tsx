@@ -123,11 +123,13 @@ export default function TutorBoard() {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    settingsAPI.getAll().then(s => {
+    const load = () => settingsAPI.getAll().then(s => {
       setSpeed(normalizeSpeed(s.playbackSpeed))
       setUiLang(appLanguage(s.appLanguage))
-      setNativeLang(baseLang(s.nativeLanguage || 'pt'))
+      setNativeLang(baseLang(s.nativeLanguage || navigator.language))  // vazio → locale (não força pt)
     }).catch(() => {})
+    load()
+    return onChannel('settings:changed', load)   // muda na hora (sem reiniciar)
   }, [])
   const cycleSpeed = () => {
     const n = nextSpeed(speed)
@@ -166,14 +168,21 @@ export default function TutorBoard() {
     })
   }, [])
 
+  // Auto-scroll pro fim SÓ quando a pessoa já está no fim. Se ela rolou pra cima (lendo/usando um
+  // card anterior — ex.: Loop), uma entry nova NÃO arrasta a tela pra baixo.
+  const nearBottomRef = useRef(true)
+  const onFeedScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  }
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (nearBottomRef.current) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [entries])
 
   return (
     <UiLangProvider value={uiLang}>
     <KnownWordsProvider>
-      <div className="flex flex-col h-screen app-paper text-foreground overflow-hidden">
+      <div className="flex flex-col h-screen app-paper text-foreground overflow-hidden rounded-[14px] border border-border-strong">
         <TitleBar title="Tutor Board" />
 
         {entries.length === 0 ? (
@@ -183,7 +192,7 @@ export default function TutorBoard() {
             <p className="text-sm opacity-70">{t('waitingAudioSub')}</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4" onScroll={onFeedScroll}>
             <div className="max-w-[720px] mx-auto mb-1">
               <div className="flex items-start gap-3">
                 <div className="min-w-0">
@@ -318,13 +327,21 @@ export function EntryCard({ entry, index, speed = 1, nativeLang = 'pt' }: { entr
   const comprehension = comprehensionPct(sentenceWords, statusMap)
   const newWords = unknownCount(sentenceWords, statusMap)
 
-  // Modo Loop/Chorus (shadowing): repete o áudio original com velocidade graduada.
+  const resetSync = useCallback(() => { lastWordRef.current = -1; setPlayMode('idle'); setProgress(-1) }, [])
+
+  // Loop: repete o áudio original 3× NA VELOCIDADE ESCOLHIDA, com pausa entre as repetições
+  // (shadowing) E sincronizando o destaque das palavras (karaokê), igual ao "Original".
   const loop = useLoopPlayer(entry.originalAudioUrl)
   const toggleLoop = useCallback(() => {
-    if (loop.running) loop.stop()
-    else loop.start({ repeats: 3, gap: 'echo', speeds: [0.8, 0.9, 1] })
-  }, [loop])
-  const resetSync = useCallback(() => { lastWordRef.current = -1; setPlayMode('idle'); setProgress(-1) }, [])
+    if (loop.running) { loop.stop(); return }
+    const cues = entry.originalCues ?? []
+    setPlayMode('original'); lastWordRef.current = -1; setProgress(0)
+    loop.start({
+      repeats: 3, gap: 'echo', speeds: [speed, speed, speed],
+      onTime: (ms, dur) => emitProgress(playbackProgress(cues, ms, dur)),
+      onEnd: resetSync,
+    })
+  }, [loop, speed, entry.originalCues, emitProgress, resetSync])
 
   // Word dictionary lookup (+ cache por palavra nesta frase, p/ não re-consultar a IA ao reclicar)
   const [lookup, setLookup] = useState<{ word: string; wordIndex: number; approxStart: number; approxEnd: number; loading: boolean; data?: WordLookup } | null>(null)

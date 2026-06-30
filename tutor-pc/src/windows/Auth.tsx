@@ -307,7 +307,7 @@ function LegalModal({ doc, onClose }: { doc: LegalDoc; onClose: () => void }) {
   const isPrivacy = doc === 'privacy'
   const Icon = isPrivacy ? ShieldCheck : FileText
   const title = isPrivacy ? t('privacyPolicy') : t('termsOfUse')
-  const items = LEGAL[uiLang][isPrivacy ? 'privacy' : 'terms']
+  const items = LEGAL[uiLang === 'pt' ? 'pt' : 'en'][isPrivacy ? 'privacy' : 'terms']
 
   return (
     <div className="fixed inset-0 z-50 bg-black/25 p-4 flex items-center justify-center">

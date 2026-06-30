@@ -18,6 +18,7 @@ vi.mock('../services/electron', () => ({
   settingsAPI: { set: api.set, getAll: api.getAll },
   credentialsAPI: { list: api.list },
   windowAPI: { show: api.show, close: api.close, minimize: api.minimize, onboardingComplete: api.onboardingComplete },
+  onChannel: vi.fn(() => () => {}),
 }))
 
 import Onboarding from './Onboarding'

@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, Mic, Square, Loader2, Volume2, RefreshCw, ArrowRight, Activity } from 'lucide-react'
-import { ttsAPI } from '../services/electron'
+import { ttsAPI, settingsAPI } from '../services/electron'
 import { playClip } from '../lib/playClip'
 import { usePractice, practiceMaxMs } from '../hooks/usePractice'
 import { decodeToMono } from '../lib/decodeAudio'
 import { pitchContour } from '../lib/pitch'
-import { diagnosticSet, type DiagnosticItem } from '../lib/diagnosticSentences'
+import { diagnosticSet, hasDiagnosticSet, type DiagnosticItem } from '../lib/diagnosticSentences'
 import { diagnoseReading, pronunciationTips, scoreLabel, type PronunciationDiagnosis } from '../lib/pronunciationDiagnosis'
-import { languageNameFor } from '../lib/languages'
+import { languageNameFor, baseLang } from '../lib/languages'
 import { uiText, type AppLanguage } from '../lib/uiLanguage'
 import DiffView from './DiffView'
 
@@ -30,13 +30,30 @@ export default function PronunciationDiagnostic({ lang, uiLang = 'pt', onClose, 
   title?: string
 }) {
   const t = (key: Parameters<typeof uiText>[1]) => uiText(uiLang, key)
-  const set = items && items.length > 0 ? items : diagnosticSet(lang)
   const drillMode = !!(items && items.length > 0)
   const heading = title ?? t('pronDiagTitle')
   const [idx, setIdx] = useState(0)
   const [result, setResult] = useState<PronunciationDiagnosis | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const { state, countdown, start, stop, cancel } = usePractice()
+
+  // Idioma do teste: começa no que abriu, mas o usuário pode TROCAR (chips). No modo "drill"
+  // (treino de palavras fracas específicas) o idioma é fixo.
+  const [selectedLang, setSelectedLang] = useState(baseLang(lang))
+  const [learn, setLearn] = useState<string[]>([])
+  useEffect(() => {
+    settingsAPI.getAll()
+      .then(s => setLearn((s.learnLanguages || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean)))
+      .catch(() => {})
+  }, [])
+  // Opções = idiomas que ela aprende (+ o que abriu + inglês), só os que têm conjunto de frases.
+  const langOptions = useMemo(
+    () => Array.from(new Set([baseLang(lang), ...learn, 'en'].filter(Boolean))).filter(hasDiagnosticSet),
+    [lang, learn],
+  )
+  const switchLang = (code: string) => { setSelectedLang(code); setIdx(0); setResult(null); cancel() }
+
+  const set = items && items.length > 0 ? items : diagnosticSet(selectedLang)
 
   const current = set[idx]
   const recording    = state === 'recording'
@@ -45,7 +62,7 @@ export default function PronunciationDiagnostic({ lang, uiLang = 'pt', onClose, 
   const busy = analyzing || transcribing
 
   const playModel = async () => {
-    const res = await ttsAPI.speak(current.text, lang).catch(() => null)
+    const res = await ttsAPI.speak(current.text, selectedLang).catch(() => null)
     if (res?.ok && res.dataUrl) playClip(res.dataUrl)
   }
 
@@ -58,7 +75,7 @@ export default function PronunciationDiagnostic({ lang, uiLang = 'pt', onClose, 
       setAnalyzing(true)
       let userContour: number[] = [], refContour: number[] = []
       try {
-        const tts = await ttsAPI.speak(current.text, lang).catch(() => null)
+        const tts = await ttsAPI.speak(current.text, selectedLang).catch(() => null)
         const [u, r] = await Promise.all([
           contourOf(audioUrl),
           tts?.ok ? contourOf(tts.dataUrl) : Promise.resolve([]),
@@ -87,15 +104,35 @@ export default function PronunciationDiagnostic({ lang, uiLang = 'pt', onClose, 
           <div className="min-w-0">
             <h2 className="display-title text-lg leading-none">{heading}</h2>
             <p className="text-[11px] text-muted mt-0.5">
-              {`${languageNameFor(lang, uiLang)} — ${drillMode ? t('pronDiagSubDrill') : t('pronDiagSubAi')}`}
+              {`${languageNameFor(selectedLang, uiLang)} — ${drillMode ? t('pronDiagSubDrill') : t('pronDiagSubAi')}`}
             </p>
           </div>
           <button onClick={onClose} className="ml-auto text-muted hover:text-danger transition-colors" title={t('close')}><X size={16} /></button>
         </div>
 
+        {/* Seletor de idioma do teste (não aparece no modo "drill", que tem palavras fixas) */}
+        {!drillMode && langOptions.length > 1 && (
+          <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border shrink-0 flex-wrap">
+            {langOptions.map(code => (
+              <button
+                key={code}
+                onClick={() => switchLang(code)}
+                className={[
+                  'px-2.5 py-1 rounded-full text-xs font-semibold transition-colors',
+                  selectedLang === code
+                    ? 'bg-primary text-white'
+                    : 'bg-surface-2 text-muted hover:bg-primary/10 hover:text-primary',
+                ].join(' ')}
+              >
+                {languageNameFor(code, uiLang)}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
           {!current ? (
-            <p className="text-sm text-muted">{t('pronUnavailable')} {languageNameFor(lang, uiLang)}.</p>
+            <p className="text-sm text-muted">{t('pronUnavailable')} {languageNameFor(selectedLang, uiLang)}.</p>
           ) : (
             <>
               {/* Frase a ler */}
@@ -128,7 +165,7 @@ export default function PronunciationDiagnostic({ lang, uiLang = 'pt', onClose, 
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-muted/60 mb-1">{t('tips')}</p>
                     <ul className="list-disc list-inside text-[13px] text-foreground/90 space-y-0.5">
-                      {pronunciationTips(lang, result.weakWords, uiLang).map((tip, i) => <li key={i}>{tip}</li>)}
+                      {pronunciationTips(selectedLang, result.weakWords, uiLang).map((tip, i) => <li key={i}>{tip}</li>)}
                     </ul>
                   </div>
                 </div>
